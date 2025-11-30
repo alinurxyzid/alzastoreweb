@@ -1,0 +1,182 @@
+/* Font Inter */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+body { 
+  font-family: 'Inter', sans-serif; 
+}
+
+/* Background Khusus Halaman Auth (Login/Register/Verif) */
+body.auth-page {
+  background-color: #fcf8fc; 
+  background-image: radial-gradient(circle at 1% 1%, #eef2ff 0.5%, #f8fafc 25%);
+}
+.dark body.auth-page {
+  background-color: #0f172a;
+  background-image: radial-gradient(circle at 1% 1%, #1e293b 0.5%, #0f172a 25%);
+}
+
+/* Spinner Loading */
+.btn-spinner {
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  width: 1.25rem; height: 1.25rem;
+  border-radius: 50%;
+  border-left-color: #ffffff;
+  animation: spin 1s ease infinite;
+}
+
+#loading-spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #2563eb;
+  animation: spin 1s ease infinite;
+}
+.dark #loading-spinner {
+  border-left-color: #3b82f6;
+}
+
+@keyframes spin { 
+  0% { transform: rotate(0deg); } 
+  100% { transform: rotate(360deg); } 
+}
+
+/* Page Transitions */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
+
+.page {
+  display: none;
+  animation: fadeIn 0.5s ease-in-out;
+}
+.page.active { display: block; }
+
+/* ========================================= */
+/* [UPDATE] NAVIGASI TOMBOL (iOS Bouncy)     */
+/* ========================================= */
+
+.nav-btn {
+  /* Hilangkan kotak highlight bawaan browser */
+  -webkit-tap-highlight-color: transparent;
+  
+  /* TRANSISI MAGIC IOS: 
+     Saat tombol dilepas, dia akan kembali ke bentuk semula 
+     dengan kurva cubic-bezier yang "membal" (overshoot) */
+  transition: 
+    transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), 
+    background-color 0.2s ease, 
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* SAAT DITEKAN (Press Down) */
+.nav-btn:active {
+  /* Mengecil lebih presisi (92%) */
+  transform: scale(0.92); 
+  
+  /* Warna berubah instan tanpa delay */
+  background-color: #2563eb !important;
+  color: white !important;
+  
+  /* Transisi saat ditekan harus cepat/instan (tanpa membal) */
+  transition: transform 0.1s ease;
+}
+
+/* STATUS AKTIF (Tab Terpilih) */
+.nav-btn.active {
+  background-color: #2563eb !important; /* Warna Default Tetap */
+  color: white !important;
+  box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.5);
+  transform: scale(1); /* Kembali normal */
+}
+
+/* Pastikan icon di dalamnya putih saat aktif/ditekan */
+.nav-btn:active i, 
+.nav-btn.active i {
+  color: white !important;
+  transition: color 0.1s;
+}
+
+/* Struk Print Style */
+@media print {
+  body * { visibility: hidden; }
+  #receipt-print-area, #receipt-print-area * { visibility: visible; }
+  #receipt-print-area {
+    position: absolute; left: 0; top: 0; width: 100%;
+  }
+}
+
+/* ========================================= */
+/* [NEW] ANIMASI HEWAN DUA ARAH (RANDOMIZED) */
+/* ========================================= */
+
+/* --- STYLE DASAR --- */
+.animal-run {
+  position: absolute;
+  will-change: left, right, transform;
+  z-index: 1; /* Pastikan di atas background layer 0 */
+}
+
+/* --- LOGIKA ARAH & FLIP --- */
+
+/* GRUP KE KIRI (Default Emoji Hadap Kiri) */
+.to-left {
+  right: -100px; /* Start di luar KANAN */
+  transform: scaleX(1); /* Tidak dibalik */
+  animation-name: move-left; /* Pakai animasi ke kiri */
+}
+
+/* GRUP KE KANAN (Emoji Dibalik Hadap Kanan) */
+.to-right {
+  left: -100px; /* Start di luar KIRI */
+  /* FLIP! Balik badan horizontal agar hadap kanan */
+  transform: scaleX(-1); 
+  animation-name: move-right; /* Pakai animasi ke kanan */
+}
+
+/* --- KEYFRAMES LINTASAN --- */
+
+@keyframes move-left {
+  0% { right: -10%; }
+  100% { right: 110%; }
+}
+
+@keyframes move-right {
+  0% { left: -10%; }
+  100% { left: 110%; }
+}
+
+/* --- PENGATURAN WAKTU (ALGORITMA ACAK / BILANGAN PRIMA) --- */
+/* Menggunakan durasi & delay berbeda untuk tiap hewan agar terlihat chaos */
+
+/* Kucing (Jalan Santai di Bawah) */
+.cat-L { bottom: 2px; animation-duration: 23s; animation-delay: -5s; animation-timing-function: linear; animation-iteration-count: infinite; }
+.cat-R { bottom: 4px; animation-duration: 19s; animation-delay: -12s; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+/* Anjing (Lari Cepat Mengejar) */
+.chicken-L { bottom: 3px; animation-duration: 13s; animation-delay: -2s; animation-timing-function: linear; animation-iteration-count: infinite; }
+.chicken-R { bottom: 3px; animation-duration: 17s; animation-delay: -8s; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+/* Kelinci (Lompat) */
+.rabbit-L { bottom: 6px; animation-duration: 29s; animation-delay: -15s; animation-timing-function: linear; animation-iteration-count: infinite; }
+.rabbit-R { bottom: 5px; animation-duration: 31s; animation-delay: -1s; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+/* Burung (Terbang di Atas) */
+.bf-L { bottom: 30px; animation-duration: 37s; animation-delay: -20s; animation-timing-function: linear; animation-iteration-count: infinite; }
+.bf-R { bottom: 25px; animation-duration: 41s; animation-delay: -10s; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+
+/* --- ANIMASI GERAK TUBUH (Goyang/Lompat) --- */
+/* (Bagian ini tidak berubah, tetap digunakan oleh kedua grup) */
+.walk { font-size: 24px; animation: walking-bounce 0.6s infinite ease-in-out alternate; }
+.run-fast { font-size: 26px; animation: running-bounce 0.25s infinite linear alternate; }
+.jump { font-size: 22px; animation: jumping-bounce 0.5s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95); }
+.fly { font-size: 20px; animation: flying-float 1.5s infinite ease-in-out alternate; }
+
+@keyframes walking-bounce { 0% { transform: rotate(-5deg); } 100% { transform: rotate(5deg) translateY(-3px); } }
+@keyframes running-bounce { 0% { transform: rotate(-10deg); } 100% { transform: rotate(10deg) translateY(-4px); } }
+@keyframes jumping-bounce { 0% { transform: translateY(0); } 50% { transform: translateY(-15px); } 100% { transform: translateY(0) scale(1.1, 0.9); } }
+@keyframes flying-float { 0% { transform: translateY(0) rotate(5deg); } 100% { transform: translateY(-10px) rotate(-5deg); } }

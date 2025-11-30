@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id" class="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lupa Password - ALZA STORE</title>
+  <link rel="icon" type="image/png" href="alza-rel.png" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page text-slate-900 dark:text-slate-200 transition-colors duration-300">
+
+  <div class="absolute top-4 right-4">
+    <button id="theme-toggle" class="w-10 h-10 rounded-full bg-white dark:bg-slate-800 shadow-md text-yellow-500 dark:text-blue-400 flex items-center justify-center transition-all duration-300">
+      <i id="theme-icon" class="fa-solid fa-sun"></i>
+    </button>
+  </div>
+
+  <div class="min-h-screen flex flex-col items-center justify-center p-4">
+    
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+      
+      <div class="flex flex-col items-center justify-center p-6 md:p-8 border-b dark:border-slate-700">
+        <div class="bg-blue-100 dark:bg-blue-900/50 p-4 rounded-full mb-4 text-blue-600 dark:text-blue-400">
+          <i class="fa-solid fa-key fa-2x"></i>
+        </div>
+        
+        <h2 class="text-2xl font-bold text-center leading-tight">
+          Lupa Password?
+        </h2>
+        <p class="text-sm text-slate-600 dark:text-slate-400 text-center mt-2">
+          Masukkan email yang terdaftar untuk mendapatkan link reset password.
+        </p>
+      </div>
+
+      <form id="verif-form" class="px-6 md:px-8 py-5 md:py-7 space-y-4">
+
+        <div id="alert-message" class="hidden p-3 rounded-lg text-sm border"></div>
+
+        <div>
+          <label for="reset-email" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
+          <div class="relative">
+            <i class="fa-solid fa-envelope text-slate-400 dark:text-slate-500 absolute top-1/2 left-3 transform -translate-y-1/2"></i>
+            <input id="reset-email" type="email" placeholder="Masukkan email" class="w-full border border-slate-300 p-3 pl-10 rounded-lg bg-slate-50 dark:bg-slate-700 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <button id="submit-button" type="submit" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 rounded-lg font-semibold text-base shadow-md hover:shadow-lg hover:-translate-y-px transform-gpu transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70">
+            <span id="btn-text">Kirim Link Reset</span>
+            <div id="btn-spinner" class="btn-spinner hidden"></div>
+          </button>
+        </div>
+
+      </form>
+
+      <div class="p-6 md:p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-xl text-center">
+        <p class="text-sm text-slate-600 dark:text-slate-400">
+          Ingat password Anda? 
+          <a href="login.html" class="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+            Login Kembali
+          </a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="auth.js"></script>
+</body>
+</html>
