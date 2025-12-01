@@ -237,6 +237,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await refreshAllData();
         showPage('dashboard');
+        const footerEl = document.getElementById('main-footer');
+        if (footerEl) footerEl.classList.remove('hidden');
     } catch (err) {
         console.error('Init error:', err);
         Swal.fire('Error Init', err.message, 'error');
@@ -891,14 +893,16 @@ function hideProdukDropdown() {
 
 async function loadKasirHistory() {
     try {
+        // [UPDATE] Tambahkan 'harga_jual_history' di dalam select
         const { data, error } = await supabase
             .from('transaksi')
-            .select('id, produk_id, qty, total, created_at, keuntungan, nota_id, nama_pembeli, diskon_persen, produk:produk_id(nama, harga_jual)')
+            .select('id, produk_id, qty, total, created_at, keuntungan, nota_id, nama_pembeli, diskon_persen, harga_jual_history, produk:produk_id(nama, harga_jual)')
             .order('created_at', { ascending: false })
             .limit(100);
 
         if (error) throw error;
 
+        // Grouping Data
         const grouped = (data || []).reduce((acc, t) => {
             const nid = t.nota_id || t.created_at;
             if (!acc[nid]) {
@@ -921,16 +925,21 @@ async function loadKasirHistory() {
 
         kasirTable.innerHTML = sorted.slice(0, 20).map(n => {
             const names = n.items.map(i => {
+                // Jika produk dihapus, pakai nama fallback, atau bisa ambil dari history jika ada kolom nama_history (opsional)
                 const namaProduk = i.produk?.nama || 'Produk Dihapus';
                 return `<span class="block text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">• ${escapeHtml(namaProduk)} (${i.qty}x)</span>`;
             }).join('');
 
+            // [UPDATE] Mapping data untuk Reprint Struk
             const reprintData = n.items.map(t => ({
                 nama: t.produk?.nama || 'Produk Dihapus',
                 qty: t.qty,
                 total: t.total,
+                // Harga Satuan yang dibayar (setelah diskon)
                 harga_satuan: (Number(t.total) / Number(t.qty)),
-                diskon_persen: t.diskon_persen || 0 
+                // [PENTING] Bawa data diskon & harga asli history
+                diskon_persen: t.diskon_persen || 0,
+                harga_asli: t.harga_jual_history // Ini adalah harga 'snapshot' saat transaksi terjadi
             }));
 
             const pembeliDisplay = n.nama_pembeli
@@ -1169,7 +1178,6 @@ async function handleProsesKeranjang() {
              const untung = (Number(i.harga_jual_final) - Number(i.modal)) * Number(i.qty);
              
              return Promise.all([
-                 // A. Simpan Transaksi (Tetap insert biasa)
                  supabase.from('transaksi').insert({ 
                      produk_id: i.produk_id, 
                      qty: i.qty, 
@@ -1177,15 +1185,15 @@ async function handleProsesKeranjang() {
                      keuntungan: untung, 
                      nota_id: notaId, 
                      nama_pembeli: buyer,
-                     diskon_persen: i.diskon_persen 
+                     diskon_persen: i.diskon_persen,
+                     
+                     // [BARU] SIMPAN ARSIP HARGA SAAT INI
+                     // Ini kunci agar laporan tidak berubah walau harga produk diedit nanti
+                     modal_history: i.modal, 
+                     harga_jual_history: i.harga_asli // Harga sebelum diskon
                  }),
-
-                 // B. Update Stok MENGGUNAKAN SQL FUNCTION (RPC)
-                 // Kita panggil fungsi 'kurangi_stok' yang baru dibuat di Langkah 1
-                 supabase.rpc('kurangi_stok', { 
-                    p_id: i.produk_id, 
-                    p_qty: i.qty 
-                 })
+                 
+                 supabase.from('produk').update({ stok: i.stok_baru }).eq('id', i.produk_id)
              ]);
         });
         
@@ -1224,7 +1232,10 @@ async function loadLaporan() {
         const start = document.getElementById('laporanTglMulai').value;
         const end = document.getElementById('laporanTglSelesai').value;
         
-        let q = supabase.from('transaksi').select('id, qty, total, keuntungan, created_at, nama_pembeli, produk:produk_id(nama)');
+        // [UPDATE QUERY] Tambahkan modal_history, harga_jual_history, diskon_persen
+        let q = supabase.from('transaksi')
+            .select('id, qty, total, keuntungan, created_at, nama_pembeli, diskon_persen, modal_history, harga_jual_history, produk:produk_id(nama)');
+            
         if(start) q = q.gte('created_at', new Date(start + 'T00:00:00').toISOString());
         if(end) q = q.lte('created_at', new Date(end + 'T23:59:59').toISOString());
         
@@ -1232,21 +1243,53 @@ async function loadLaporan() {
         if(error) throw error;
         
         globalLaporanCache = data || [];
+        
         laporanTable.innerHTML = globalLaporanCache.map(t => {
             const canSee = userPermissions.can_see_finances;
             const canDel = userPermissions.can_manage_laporan;
+            
+            // [LOGIKA DATA LAMA VS BARU]
+            // Jika transaksi lama belum punya history, kita tampilkan '-' atau 0
+            const modalShow = t.modal_history ? formatRupiah(t.modal_history) : '<span class="text-xs text-gray-400">-</span>';
+            const hargaShow = t.harga_jual_history ? formatRupiah(t.harga_jual_history) : '<span class="text-xs text-gray-400">-</span>';
+            
+            // Tampilan Diskon
+            const diskonHtml = t.diskon_persen > 0 
+                ? `<span class="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-bold">-${t.diskon_persen}%</span>` 
+                : '-';
+
+            // Izin lihat modal
+            const modalCell = canSee ? modalShow : '<i class="fa-solid fa-lock text-gray-300"></i>';
+
             return `
-             <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                <td class="p-3 text-xs" data-label="Tanggal">${formatTanggal(t.created_at)}</td>
-                <td class="p-3 font-medium" data-label="Produk">${escapeHtml(t.produk?.nama)}</td>
-                <td class="p-3" data-label="Pembeli">${escapeHtml(t.nama_pembeli || 'N/A')}</td>
-                <td class="p-3" data-label="Qty">${t.qty}</td>
-                <td class="p-3 font-medium" data-label="Total">${formatRupiah(t.total)}</td>
-                <td class="p-3 text-green-600" data-label="Keuntungan">${canSee ? formatRupiah(t.keuntungan) : '-'}</td>
-                <td class="p-3" data-label="Aksi"><button class="bg-red-600 text-white px-2 py-1 rounded text-xs ${canDel?'':'opacity-50 cursor-not-allowed'}" onclick="hapusLaporan(${t.id})" ${canDel?'':'disabled'}>Hapus</button></td>
+             <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b dark:border-slate-700">
+                <td class="p-3 text-xs whitespace-nowrap text-slate-500">${formatTanggal(t.created_at)}</td>
+                <td class="p-3 font-medium text-slate-800 dark:text-slate-200">${escapeHtml(t.produk?.nama || 'Produk Dihapus')}</td>
+                <td class="p-3 text-sm">${escapeHtml(t.nama_pembeli || '-')}</td>
+                
+                <td class="p-3 text-sm text-slate-600 dark:text-slate-400">${modalCell}</td>
+                <td class="p-3 text-sm text-slate-600 dark:text-slate-400">${hargaShow}</td>
+                <td class="p-3 text-center text-sm">${diskonHtml}</td>
+                
+                <td class="p-3 text-center font-bold">${t.qty}</td>
+                <td class="p-3 font-semibold text-slate-800 dark:text-slate-200">${formatRupiah(t.total)}</td>
+                <td class="p-3 font-semibold text-green-600 dark:text-green-400">${canSee ? formatRupiah(t.keuntungan) : '-'}</td>
+                
+                <td class="p-3 text-center">
+                    <button class="bg-red-100 text-red-600 hover:bg-red-600 hover:text-white p-2 rounded-lg transition-all ${canDel?'':'opacity-50 cursor-not-allowed'}" 
+                            title="Hapus Transaksi"
+                            onclick="hapusLaporan(${t.id})" ${canDel?'':'disabled'}>
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
              </tr>`;
         }).join('');
-    } catch(e) { laporanTable.innerHTML = `<tr><td colspan="7" class="text-center text-red-500">Gagal load.</td></tr>`; }
+        
+    } catch(e) { 
+        console.error(e);
+        // Colspan disesuaikan jadi 10 karena kolom bertambah
+        laporanTable.innerHTML = `<tr><td colspan="10" class="text-center p-4 text-red-500">Gagal memuat laporan.</td></tr>`; 
+    }
 }
 
 window.hapusLaporan = async function(id) {
@@ -1301,18 +1344,26 @@ function showReceiptModal(items, date, buyer) {
         let infoHarga = `${i.qty} x ${formatRupiah(i.harga_satuan)}`;
         
         if (i.diskon_persen > 0) {
-            let hargaNormal = i.harga_satuan / ((100 - i.diskon_persen) / 100);
+            // [LOGIKA BARU]
+            // Prioritas 1: Gunakan 'harga_asli' dari database (History)
+            // Prioritas 2: Jika data lama tidak punya history, hitung manual (Fallback)
+            let hargaNormalVal;
+            if (i.harga_asli) {
+                hargaNormalVal = i.harga_asli;
+            } else {
+                // Rumus mundur: Harga Akhir / (Faktor Diskon)
+                hargaNormalVal = i.harga_satuan / ((100 - i.diskon_persen) / 100);
+            }
             
-            // PERBAIKAN POSISI GARIS UNTUK JPG (Tetap dipertahankan)
             infoHarga = `
                 <div style="margin-bottom: 2px;">${i.qty} x ${formatRupiah(i.harga_satuan)}</div>
-                <div class="text-xs text-slate-500" style="line-height: 1;">
+                <div class="text-xs text-slate-500" style="line-height: 1; position: relative; display: inline-block;">
                     <span style="position: relative; display: inline-block; color: #94a3b8;">
-                        ${formatRupiah(hargaNormal)}
+                        ${formatRupiah(hargaNormalVal)}
                         <span style="
                             position: absolute;
                             left: 0;
-                            top: 75%; 
+                            top: 45%; 
                             width: 100%;
                             height: 1.5px;
                             background-color: #475569;
@@ -1325,10 +1376,6 @@ function showReceiptModal(items, date, buyer) {
             `;
         }
 
-        // PERBAIKAN UTAMA:
-        // 1. line-height: 1.2 -> Agar spasi antar baris rapat/tidak turun
-        // 2. vertical-align: top -> Memaksa teks nempel ke langit-langit sel
-        // 3. pt-1 / pb-1 -> Mengurangi padding bawaan Tailwind
         return `<tr class="border-b border-dashed border-slate-300 dark:border-slate-600">
                     <td class="pt-1 font-medium" colspan="2" style="line-height: 1.2; vertical-align: bottom;">
                         ${escapeHtml(i.nama)}
@@ -1390,15 +1437,21 @@ function exportToExcel() {
     
     const data = globalLaporanCache.map(t => ({
         "Tanggal": formatTanggal(t.created_at),
-        "Produk": t.produk?.nama,
-        "Pembeli": t.nama_pembeli,
+        "Produk": t.produk?.nama || 'Produk Dihapus',
+        "Pembeli": t.nama_pembeli || '',
+        
+        // [BARU]
+        "Modal Satuan": canSee ? (t.modal_history || 0) : '-',
+        "Harga Normal": t.harga_jual_history || 0,
+        "Diskon (%)": t.diskon_persen || 0,
+        
         "Qty": t.qty,
-        "Total": t.total,
-        "Keuntungan": canSee ? t.keuntungan : ''
+        "Total Akhir": t.total,
+        "Laba Bersih": canSee ? t.keuntungan : ''
     }));
     
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Laporan");
-    XLSX.writeFile(wb, "Laporan_Alza.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
+    XLSX.writeFile(wb, "Laporan_Alza_Store.xlsx");
 }
