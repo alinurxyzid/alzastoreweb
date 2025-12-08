@@ -2,6 +2,80 @@
 const MAIN_ADMIN_ID = 'cbb9f0e0-8155-41fd-8eb7-9aab185c665c';
 // ===============================================
 
+// =========================================================
+// UTILITY FUNCTIONS (Wajib ada dan diletakkan di bagian atas)
+// =========================================================
+
+// Pastikan fungsi formatDate Anda terlihat seperti ini:
+function formatDate(timestamp) {
+    if (!timestamp) return '-';
+    
+    const date = new Date(timestamp);
+    
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+    });
+
+    const parts = formatter.formatToParts(date).reduce((acc, p) => {
+        acc[p.type] = p.value;
+        return acc;
+    }, {});
+    
+    return `${parts.day} ${parts.month} ${parts.year}, ${parts.hour}:${parts.minute}`;
+}
+
+/**
+ * Mengembalikan timestamp dalam format string PostgreSQL (YYYY-MM-DD HH:MM:SS)
+ * yang dipaksa ke zona waktu Asia/Jakarta untuk penyimpanan data.
+ */
+function getWibTimestampString() {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    });
+
+    const parts = formatter.formatToParts(now).reduce((acc, p) => {
+        if (p.type === 'day') acc.day = p.value;
+        if (p.type === 'month') acc.month = p.value;
+        if (p.type === 'year') acc.year = p.value;
+        if (p.type === 'hour') acc.hour = p.value;
+        if (p.type === 'minute') acc.minute = p.value;
+        if (p.type === 'second') acc.second = p.value;
+        return acc;
+    }, {});
+    
+    // Format YYYY-MM-DD HH:MM:SS (WIB)
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+/**
+ * Memformat angka menjadi mata uang Rupiah.
+ */
+function formatCurrency(amount) {
+    if (amount === null || amount === undefined || isNaN(amount)) return 'Rp 0';
+    return new Intl.NumberFormat('id-ID', { 
+        style: 'currency', 
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount);
+}
+
+// =========================================================
+
 // Variabel global
 let currentUserId = null;
 let globalCurrentUserName = 'Kasir';
@@ -108,14 +182,59 @@ function hideLoading() {
   }
 }
 
+// Fungsi untuk ganti halaman (Tab Switcher)
 function showPage(pageId) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const el = document.getElementById(pageId);
-  if (el) el.classList.add('active');
+    // 1. Sembunyikan semua halaman
+    document.querySelectorAll('.page, section').forEach(el => {
+        if (el.id !== 'loading' && el.id !== 'receiptModal' && !el.id.startsWith('modal')) {
+             el.classList.add('hidden');
+             el.classList.remove('active', 'animate-fade-in'); 
+        }
+    });
 
-  navButtons.forEach(b => {
-    b.classList.toggle('active', b.dataset.page === pageId);
-  });
+    // 2. Munculkan halaman target
+    const target = document.getElementById(pageId);
+    if (target) {
+        target.classList.remove('hidden');
+        target.classList.add('active', 'animate-fade-in');
+    }
+
+    // 3. Update tombol navigasi aktif (Hanya Toggles kelas 'active' dan warna teks inaktif)
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        const isActive = (btn.dataset.page === pageId);
+        
+        // Kelas inaktif (abu-abu gelap) harus tetap dikelola di JS karena tidak ada di CSS .nav-btn.active
+        const inactiveClasses = ['text-slate-600', 'dark:text-slate-300'];
+
+        // A. Kelola Kelas 'active' (CSS akan menangani warna Biru dan Putih)
+        btn.classList.toggle('active', isActive);
+
+        // B. Kelola Warna Teks Inaktif (Kebalikannya)
+        // Jika aktif, hapus warna inaktif. Jika inaktif, tambahkan warna inaktif.
+        btn.classList.toggle(inactiveClasses[0], !isActive); // text-slate-600
+        btn.classList.toggle(inactiveClasses[1], !isActive); // dark:text-slate-300
+        
+        // [CLEANUP] Hapus kelas Tailwind background/text yang berlebihan dari versi sebelumnya 
+        // agar CSS .active tidak terganggu oleh kelas Tailwind yang tersisa.
+        btn.classList.remove('bg-blue-600', 'dark:bg-blue-700', 'text-white', 'bg-slate-100', 'dark:bg-slate-700', 'text-blue-600', 'dark:text-blue-400');
+    });
+
+    // ============================================================
+    // [PENTING] LOGIKA KHUSUS PER HALAMAN (LOAD DATA OTOMATIS)
+    // ============================================================
+    
+    if (pageId === 'dashboard') {
+        loadDashboard();
+    } 
+    else if (pageId === 'stok') {
+        loadStok();
+    } 
+    else if (pageId === 'laporan') {
+        loadLaporan();
+    } 
+    else if (pageId === 'preorder') {
+        loadPreorders();
+    }
 }
 
 function formatRupiah(number) {
@@ -201,28 +320,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const INACTIVITY_TIMEOUT = 600000; // 10 Menit
 
     async function forceLogout() {
-         console.log("Timeout: Logout paksa.");
-         window.removeEventListener('mousemove', resetInactivityTimer);
-         window.removeEventListener('mousedown', resetInactivityTimer);
-         window.removeEventListener('keypress', resetInactivityTimer);
-         window.removeEventListener('scroll', resetInactivityTimer);
-         window.removeEventListener('touchstart', resetInactivityTimer);
+          console.log("Timeout: Logout paksa.");
+          window.removeEventListener('mousemove', resetInactivityTimer);
+          window.removeEventListener('mousedown', resetInactivityTimer);
+          window.removeEventListener('keypress', resetInactivityTimer);
+          window.removeEventListener('scroll', resetInactivityTimer);
+          window.removeEventListener('touchstart', resetInactivityTimer);
 
-         await Swal.fire({
-             icon: 'warning',
-             title: 'Sesi Habis',
-             text: 'Silakan login kembali',
-             confirmButtonText: 'OK',
-             confirmButtonColor: '#2563eb',
-             allowOutsideClick: false
-         });
-         await supabase.auth.signOut();
-         window.location.href = 'login.html';
+          await Swal.fire({
+              icon: 'warning',
+              title: 'Sesi Habis',
+              text: 'Silakan login kembali',
+              confirmButtonText: 'OK',
+              confirmButtonColor: '#2563eb',
+              allowOutsideClick: false
+          });
+          await supabase.auth.signOut();
+          window.location.href = 'login.html';
     }
 
     function resetInactivityTimer() {
-         clearTimeout(inactivityTimer);
-         inactivityTimer = setTimeout(forceLogout, INACTIVITY_TIMEOUT);
+          clearTimeout(inactivityTimer);
+          inactivityTimer = setTimeout(forceLogout, INACTIVITY_TIMEOUT);
     }
 
     resetInactivityTimer();
@@ -246,7 +365,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideLoading();
     }
 
-    // 5. Event Listeners
+    // --- LOGIKA EVENT LISTENERS (MENGGUNAKAN SAFE BIND) ---
+
+    // Fungsi bantuan agar tidak error jika elemen tidak ada di HTML
+    const safeBind = (id, event, func) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener(event, func);
+    };
+
+    // 5. Navigasi
     navButtons.forEach(btn => {
         btn.addEventListener('click', () => {
             showPage(btn.dataset.page);
@@ -256,113 +383,125 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Form Listener STOK
-    formStok.addEventListener('submit', handleStokSubmit);
+    safeBind('formStok', 'submit', handleStokSubmit);
 
     // Form Listener KASIR (Clone untuk Reset Event)
     const oldFormKasir = document.getElementById('formKasir');
-    // Clone form untuk membuang semua event listener "hantu" sebelumnya
-    const newFormKasir = oldFormKasir.cloneNode(true);
-    oldFormKasir.parentNode.replaceChild(newFormKasir, oldFormKasir);
+    if (oldFormKasir) {
+        // Clone form untuk membuang semua event listener "hantu" sebelumnya
+        const newFormKasir = oldFormKasir.cloneNode(true);
+        oldFormKasir.parentNode.replaceChild(newFormKasir, oldFormKasir);
+    }
     
     // Ambil referensi elemen-elemen di dalam form BARU
     const freshFormKasir = document.getElementById('formKasir');
-    // Cari tombol "Tambah" (tombol pertama di form)
-    const btnTambah = freshFormKasir.querySelector('button'); 
-    // Cari Input Qty
-    const inputQty = document.getElementById('kasirQty');
+    if (freshFormKasir) {
+        // Cari tombol "Tambah" (tombol pertama di form)
+        const btnTambah = freshFormKasir.querySelector('button'); 
+        // Cari Input Qty
+        const inputQty = document.getElementById('kasirQty');
 
-    // [KUNCI] Ubah type tombol jadi 'button' agar tidak memicu submit form bawaan browser
-    if(btnTambah) {
-        btnTambah.type = 'button'; 
-        
-        // Pasang listener KLIK manual
-        btnTambah.addEventListener('click', (e) => {
-            e.preventDefault(); // Jaga-jaga
-            handleAddToCart(e);
-        });
-    }
-
-    // [KUNCI] Pasang listener ENTER pada input Qty (pengganti submit form)
-    if(inputQty) {
-        inputQty.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault(); // Matikan submit form
-                handleAddToCart(e); // Panggil manual
-            }
-        });
-    }
-
-    // Tombol Clear
-    const btnClearKasir = document.getElementById('kasirClear'); 
-    if(btnClearKasir) {
-        // Pastikan tombol clear juga type='button'
-        btnClearKasir.type = 'button';
-        btnClearKasir.addEventListener('click', () => {
-            freshFormKasir.reset();
-            const searchEl = document.getElementById('kasirProdukSearch');
-            const idEl = document.getElementById('kasirSelectedProdukId');
-            const qtyEl = document.getElementById('kasirQty');
+        // [KUNCI] Ubah type tombol jadi 'button' agar tidak memicu submit form bawaan browser
+        if(btnTambah) {
+            btnTambah.type = 'button'; 
             
-            if(searchEl) searchEl.value = '';
-            if(idEl) idEl.value = '';
-            if(qtyEl) qtyEl.value = 1;
-        });
+            // Pasang listener KLIK manual
+            btnTambah.addEventListener('click', (e) => {
+                e.preventDefault(); 
+                handleAddToCart(e);
+            });
+        }
+
+        // [KUNCI] Pasang listener ENTER pada input Qty (pengganti submit form)
+        if(inputQty) {
+            inputQty.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); 
+                    handleAddToCart(e); 
+                }
+            });
+        }
+
+        // Tombol Clear
+        const btnClearKasir = document.getElementById('kasirClear'); 
+        if(btnClearKasir) {
+            btnClearKasir.type = 'button';
+            btnClearKasir.addEventListener('click', () => {
+                freshFormKasir.reset();
+                const searchEl = document.getElementById('kasirProdukSearch');
+                const idEl = document.getElementById('kasirSelectedProdukId');
+                const qtyEl = document.getElementById('kasirQty');
+                
+                if(searchEl) searchEl.value = '';
+                if(idEl) idEl.value = '';
+                if(qtyEl) qtyEl.value = 1;
+            });
+        }
+
+        // Listener Search pada elemen BARU
+        const freshSearchEl = document.getElementById('kasirProdukSearch');
+        if (freshSearchEl) {
+            freshSearchEl.addEventListener('input', handleProdukSearch);
+            freshSearchEl.addEventListener('focus', handleProdukSearch);
+            freshSearchEl.addEventListener('blur', () => {
+                setTimeout(hideProdukDropdown, 200); 
+            });
+        }
+
+        const kasirNamaInput = document.getElementById('kasirNamaPembeli');
+        if (kasirNamaInput) {
+            kasirNamaInput.addEventListener('input', updateKeranjangPembeliDisplay);
+        }
     }
 
-    // Listener Search pada elemen BARU
-    const freshSearchEl = document.getElementById('kasirProdukSearch');
-    if (freshSearchEl) {
-        freshSearchEl.addEventListener('input', handleProdukSearch);
-        freshSearchEl.addEventListener('focus', handleProdukSearch);
-        freshSearchEl.addEventListener('blur', () => {
-            setTimeout(hideProdukDropdown, 200); 
-        });
-    }
-    // === [AKHIR PERBAIKAN UTAMA] ===
 
-    const kasirNamaInput = document.getElementById('kasirNamaPembeli');
-    if (kasirNamaInput) {
-        kasirNamaInput.addEventListener('input', updateKeranjangPembeliDisplay);
-    }
+    // Binding Tombol Modal & Export
+    safeBind('exportExcelBtn', 'click', exportToExcel);
+    safeBind('laporanFilterBtn', 'click', loadLaporan);
+    safeBind('closeModalBtn', 'click', () => closeReceiptModal(true));
+    safeBind('printReceiptBtn', 'click', printReceipt);
+    safeBind('exportJpgBtn', 'click', exportReceiptAsJpg);
 
-    // Logout Modal Logic
-    const logoutConfirmModal = document.getElementById('logoutConfirmModal');
-    document.getElementById('logout-button').addEventListener('click', () => {
-       logoutConfirmModal.classList.remove('hidden');
-    });
-    document.getElementById('logoutModalYesBtn').addEventListener('click', async () => {
-       logoutConfirmModal.classList.add('hidden');
-       showLoading('Anda sedang logout...');
-       const { error } = await supabase.auth.signOut();
-       if (error) {
-         alert('Gagal logout: ' + error.message);
-         hideLoading();
-       } else {
-         window.location.href = 'login.html';
-       }
-    });
-    document.getElementById('logoutModalNoBtn').addEventListener('click', () => logoutConfirmModal.classList.add('hidden'));
-    document.getElementById('logoutModalCloseBtn').addEventListener('click', () => logoutConfirmModal.classList.add('hidden'));
+    // Binding Tombol Konfirmasi
+    safeBind('confirmModalYesBtn', 'click', handleConfirmYes);
+    safeBind('confirmModalNoBtn', 'click', handleConfirmNo);
+    safeBind('closeConfirmBtn', 'click', handleConfirmNo);
 
-    // Tombol Lainnya
-    document.getElementById('exportExcelBtn').addEventListener('click', exportToExcel);
-    document.getElementById('laporanFilterBtn').addEventListener('click', loadLaporan);
-    document.getElementById('closeModalBtn').addEventListener('click', () => closeReceiptModal(true));
-    document.getElementById('printReceiptBtn').addEventListener('click', printReceipt);
-    document.getElementById('exportJpgBtn').addEventListener('click', exportReceiptAsJpg);
+    // Binding Tombol Keranjang
+    safeBind('prosesKeranjangBtn', 'click', handleProsesKeranjang);
+    safeBind('clearKeranjangBtn', 'click', handleClearKeranjang);
 
-    confirmModalYesBtn.addEventListener('click', handleConfirmYes);
-    confirmModalNoBtn.addEventListener('click', handleConfirmNo);
-    closeConfirmBtn.addEventListener('click', handleConfirmNo);
-
-    prosesKeranjangBtn.addEventListener('click', handleProsesKeranjang);
-    clearKeranjangBtn.addEventListener('click', handleClearKeranjang);
-
-    tambahVarianBtn.addEventListener('click', tambahVarianInput);
+    // Binding Tombol Stok
+    safeBind('tambahVarianBtn', 'click', tambahVarianInput);
     
+    // Binding Tombol Logout
+    safeBind('logout-button', 'click', () => {
+        const modal = document.getElementById('logoutConfirmModal');
+        if(modal) modal.classList.remove('hidden');
+    });
+    safeBind('logoutModalYesBtn', 'click', async () => {
+        const modal = document.getElementById('logoutConfirmModal');
+        if(modal) modal.classList.add('hidden');
+        showLoading('Anda sedang logout...');
+        const { error } = await supabase.auth.signOut();
+        if (error) { alert('Gagal logout: ' + error.message); hideLoading(); } 
+        else { window.location.href = 'login.html'; }
+    });
+    safeBind('logoutModalNoBtn', 'click', () => {
+        const modal = document.getElementById('logoutConfirmModal');
+        if(modal) modal.classList.add('hidden');
+    });
+
+    // Set Tanggal Laporan Default
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('laporanTglMulai').value = today;
-    document.getElementById('laporanTglSelesai').value = today;
+    safeBind('laporanTglMulai', 'input', () => {}); // Just bind to avoid null error
+    safeBind('laporanTglSelesai', 'input', () => {}); // Just bind to avoid null error
+    
+    const tglMulai = document.getElementById('laporanTglMulai');
+    const tglSelesai = document.getElementById('laporanTglSelesai');
+
+    if(tglMulai) tglMulai.value = today;
+    if(tglSelesai) tglSelesai.value = today;
 });
 
 // ---------- MAIN FUNCTIONS ----------
@@ -683,12 +822,12 @@ async function loadStok() {
                 
                 <td class="p-3 text-center">
                    <div class="flex justify-center gap-2">
-                     <button class="bg-yellow-500 text-white px-2 py-1 rounded text-xs ${btnClass}" onclick="prepareEdit(${p.id})" ${disabled}>
-                        <i class="fa-solid fa-pencil"></i>
-                     </button>
-                     <button class="bg-red-600 text-white px-2 py-1 rounded text-xs ${btnClass}" onclick="hapusProduk(${p.id})" ${disabled}>
-                        <i class="fa-solid fa-trash"></i>
-                     </button>
+                      <button class="bg-yellow-500 text-white px-2 py-1 rounded text-xs ${btnClass}" onclick="prepareEdit(${p.id})" ${disabled}>
+                          <i class="fa-solid fa-pencil"></i>
+                      </button>
+                      <button class="bg-red-600 text-white px-2 py-1 rounded text-xs ${btnClass}" onclick="hapusProduk(${p.id})" ${disabled}>
+                          <i class="fa-solid fa-trash"></i>
+                      </button>
                    </div>
                 </td>
               </tr>`;
@@ -891,9 +1030,9 @@ function hideProdukDropdown() {
     }
 }
 
+// --- Update Load History agar Struk Lama Aman ---
 async function loadKasirHistory() {
     try {
-        // [UPDATE] Tambahkan 'harga_jual_history' di dalam select
         const { data, error } = await supabase
             .from('transaksi')
             .select('id, produk_id, qty, total, created_at, keuntungan, nota_id, nama_pembeli, diskon_persen, harga_jual_history, produk:produk_id(nama, harga_jual)')
@@ -904,10 +1043,10 @@ async function loadKasirHistory() {
 
         // Grouping Data
         const grouped = (data || []).reduce((acc, t) => {
-            const nid = t.nota_id || t.created_at;
+            const nid = t.nota_id || t.created_at; // Fallback jika nota_id kosong (data jadul)
             if (!acc[nid]) {
                 acc[nid] = {
-                    nota_id: nid,
+                    nota_id: nid, // Pastikan ID ini terbawa
                     items: [],
                     total: 0,
                     qty: 0,
@@ -923,42 +1062,41 @@ async function loadKasirHistory() {
 
         const sorted = Object.values(grouped).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-        kasirTable.innerHTML = sorted.slice(0, 20).map(n => {
+        const tableBody = document.getElementById('kasirTable');
+        if(!tableBody) return;
+
+        tableBody.innerHTML = sorted.slice(0, 20).map(n => {
             const names = n.items.map(i => {
-                // Jika produk dihapus, pakai nama fallback, atau bisa ambil dari history jika ada kolom nama_history (opsional)
                 const namaProduk = i.produk?.nama || 'Produk Dihapus';
                 return `<span class="block text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">• ${escapeHtml(namaProduk)} (${i.qty}x)</span>`;
             }).join('');
 
-            // [UPDATE] Mapping data untuk Reprint Struk
+            // Data untuk Reprint Struk
             const reprintData = n.items.map(t => ({
                 nama: t.produk?.nama || 'Produk Dihapus',
                 qty: t.qty,
-                total: t.total,
-                // Harga Satuan yang dibayar (setelah diskon)
-                harga_satuan: (Number(t.total) / Number(t.qty)),
-                // [PENTING] Bawa data diskon & harga asli history
+                total: t.total, 
+                harga_satuan: (Number(t.total) / Number(t.qty)), // Hitung balik harga satuan
                 diskon_persen: t.diskon_persen || 0,
-                harga_asli: t.harga_jual_history // Ini adalah harga 'snapshot' saat transaksi terjadi
+                harga_asli: t.harga_jual_history
             }));
 
-            const pembeliDisplay = n.nama_pembeli
-                ? `<span class="font-medium text-slate-700 dark:text-slate-300">${escapeHtml(n.nama_pembeli)}</span>`
-                : `<span class="italic text-slate-400 text-xs">Umum</span>`;
-
-            const pembeliRaw = n.nama_pembeli || ' ';
+            // [KUNCI PERBAIKAN]
+            const jsonItems = JSON.stringify(reprintData).replace(/"/g, '&quot;');
+            const buyerSafe = escapeHtml(n.nama_pembeli || ' ');
+            const notaSafe = n.nota_id || ''; 
 
             return `
              <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b dark:border-slate-700 align-top transition-colors duration-150">
                 <td class="p-3 align-middle">${names}</td>
-                <td class="p-3 align-middle">${pembeliDisplay}</td>
+                <td class="p-3 align-middle"><span class="font-medium">${buyerSafe}</span></td>
                 <td class="p-3 align-middle text-center">${n.qty}</td>
                 <td class="p-3 align-middle font-semibold text-slate-700 dark:text-slate-200">${formatRupiah(n.total)}</td>
                 <td class="p-3 align-middle text-xs text-slate-500 whitespace-nowrap">${formatTanggal(n.created_at)}</td>
                 <td class="p-3 align-middle text-center">
                    <button class="bg-sky-500 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-sky-600 transition-all shadow-sm flex items-center justify-center gap-1 mx-auto"
                            title="Cetak Ulang Struk"
-                           onclick='reprintReceipt(${JSON.stringify(reprintData)}, "${n.created_at}", ${JSON.stringify(pembeliRaw)})'>
+                           onclick='reprintReceipt(${jsonItems}, "${n.created_at}", "${buyerSafe}", "${notaSafe}")'>
                      <i class="fa-solid fa-print"></i> Struk
                    </button>
                 </td>
@@ -967,7 +1105,30 @@ async function loadKasirHistory() {
 
     } catch (err) {
         console.error('loadKasirHistory error:', err);
-        kasirTable.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Gagal memuat riwayat transaksi: ${err.message}</td></tr>`;
+    }
+}
+
+// Fungsi Wrapper Reprint (Menjembatani tombol history ke modal struk)
+window.reprintReceipt = function(items, date, buyer, notaId) {
+    showReceiptModal(items, date, buyer, null); 
+    
+    // Jika Nota ID (dari DB) ada, paksa tampil di struk lama (walaupun struk biasa)
+   const labelNota = document.getElementById('labelNota');
+    const valueNota = document.getElementById('receiptNota');
+    
+    if(notaId && notaId.startsWith('PO-')) {
+        if(labelNota) labelNota.classList.remove('hidden');
+        if(valueNota) {
+            valueNota.classList.remove('hidden');
+            valueNota.textContent = notaId;
+        }
+    } else {
+        // Jika bukan PO (misal ID random UUID), pastikan tetap tersembunyi
+        if(labelNota) labelNota.classList.add('hidden');
+        if(valueNota) {
+            valueNota.classList.add('hidden');
+            valueNota.textContent = '';
+        }
     }
 }
 
@@ -1188,7 +1349,6 @@ async function handleProsesKeranjang() {
                      diskon_persen: i.diskon_persen,
                      
                      // [BARU] SIMPAN ARSIP HARGA SAAT INI
-                     // Ini kunci agar laporan tidak berubah walau harga produk diedit nanti
                      modal_history: i.modal, 
                      harga_jual_history: i.harga_asli // Harga sebelum diskon
                  }),
@@ -1221,74 +1381,307 @@ async function handleProsesKeranjang() {
         await loadStok(); 
     } finally {
         btnProses.disabled = false;
-        btnProses.innerHTML = '<i class="fa-solid fa-check-double"></i> Proses';
+        btnProses.innerHTML = '<i class="fa-solid fa-check-double"></i> Bayar Lunas';
     }
 }
 
 // === LAPORAN & EXPORT ===
 
+// Ganti seluruh fungsi loadLaporan yang ada di script.js
+
 async function loadLaporan() {
+    showLoading('Memuat Laporan...');
+
     try {
-        const start = document.getElementById('laporanTglMulai').value;
-        const end = document.getElementById('laporanTglSelesai').value;
-        
-        // [UPDATE QUERY] Tambahkan modal_history, harga_jual_history, diskon_persen
-        let q = supabase.from('transaksi')
-            .select('id, qty, total, keuntungan, created_at, nama_pembeli, diskon_persen, modal_history, harga_jual_history, produk:produk_id(nama)');
-            
-        if(start) q = q.gte('created_at', new Date(start + 'T00:00:00').toISOString());
-        if(end) q = q.lte('created_at', new Date(end + 'T23:59:59').toISOString());
-        
-        const { data, error } = await q.order('created_at', { ascending: false }).limit(200);
-        if(error) throw error;
-        
-        globalLaporanCache = data || [];
-        
-        laporanTable.innerHTML = globalLaporanCache.map(t => {
-            const canSee = userPermissions.can_see_finances;
-            const canDel = userPermissions.can_manage_laporan;
-            
-            // [LOGIKA DATA LAMA VS BARU]
-            // Jika transaksi lama belum punya history, kita tampilkan '-' atau 0
-            const modalShow = t.modal_history ? formatRupiah(t.modal_history) : '<span class="text-xs text-gray-400">-</span>';
-            const hargaShow = t.harga_jual_history ? formatRupiah(t.harga_jual_history) : '<span class="text-xs text-gray-400">-</span>';
-            
-            // Tampilan Diskon
-            const diskonHtml = t.diskon_persen > 0 
-                ? `<span class="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-bold">-${t.diskon_persen}%</span>` 
-                : '-';
+        let { data: transactions, error } = await supabase
+            .from('transaksi')
+            .select('*') 
+            .order('created_at', { ascending: false });
 
-            // Izin lihat modal
-            const modalCell = canSee ? modalShow : '<i class="fa-solid fa-lock text-gray-300"></i>';
+        if (error) throw error;
 
-            return `
-             <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b dark:border-slate-700">
-                <td class="p-3 text-xs whitespace-nowrap text-slate-500">${formatTanggal(t.created_at)}</td>
-                <td class="p-3 font-medium text-slate-800 dark:text-slate-200">${escapeHtml(t.produk?.nama || 'Produk Dihapus')}</td>
-                <td class="p-3 text-sm">${escapeHtml(t.nama_pembeli || '-')}</td>
+        const laporanTable = document.getElementById('laporanTable');
+        laporanTable.innerHTML = '';
+        
+        // Simpan data ke cache global untuk export Excel
+        globalLaporanCache = transactions; 
+
+        // [FIX KRITIS BARU] Buat map nama produk dari cache stok untuk fallback data lama
+        const prodMap = globalProdukCache.reduce((m,p)=> (m[p.id]=p.nama, m), {});
+
+        transactions.forEach(item => {
+            
+            // --- DATA EXTRACTION & SAFETY CHECK ---
+            const modalValue = parseFloat(item.modal_history) || 0; 
+            const hargaJualValue = parseFloat(item.harga_jual_history) || 0;
+            const diskonValue = parseFloat(item.diskon_persen) || 0;
+            
+            const qtyValue = item.qty || 1;
+            const totalValue = item.total || 0;
+            const labaValue = item.keuntungan || 0; 
+            const laba = parseFloat(labaValue);
+            
+            // --- LOGIKA TAMPILAN PRODUK ---
+            // 1. Prioritas: Ambil dari nama snapshot (Data Baru/Terkini)
+            let productName = item.nama_produk;
+            
+            // 2. Fallback: Jika nama snapshot kosong, cari di cache produk menggunakan ID (Data Lama)
+            if (!productName && item.produk_id) {
+                productName = prodMap[item.produk_id];
+            }
+            
+            // 3. Final: Gunakan nama yang ditemukan, atau ID jika tetap tidak ada
+            const finalProductName = productName || `[ID: ${item.produk_id || '???'}]`;
+            
+            const productVarian = item.varian ? ` (${item.varian})` : '';
+
+            const row = document.createElement('tr');
+            
+            const transaksiIdSafe = item.id || '0';
+            const produkIdSafe = item.produk_id || 0;
+            
+            row.innerHTML = `
+                <td class="p-3">${formatDate(item.created_at)}</td>
+                <td class="p-3">${finalProductName}${productVarian}</td> <td class="p-3">${item.nama_pembeli || 'Umum'}</td>
                 
-                <td class="p-3 text-sm text-slate-600 dark:text-slate-400">${modalCell}</td>
-                <td class="p-3 text-sm text-slate-600 dark:text-slate-400">${hargaShow}</td>
-                <td class="p-3 text-center text-sm">${diskonHtml}</td>
+                <td class="p-3">${formatCurrency(modalValue)}</td>
+                <td class="p-3">${formatCurrency(hargaJualValue)}</td>
                 
-                <td class="p-3 text-center font-bold">${t.qty}</td>
-                <td class="p-3 font-semibold text-slate-800 dark:text-slate-200">${formatRupiah(t.total)}</td>
-                <td class="p-3 font-semibold text-green-600 dark:text-green-400">${canSee ? formatRupiah(t.keuntungan) : '-'}</td>
+                <td class="p-3 text-center">${diskonValue}%</td>
+                <td class="p-3 text-center">${qtyValue}</td>
                 
-                <td class="p-3 text-center">
-                    <button class="bg-red-100 text-red-600 hover:bg-red-600 hover:text-white p-2 rounded-lg transition-all ${canDel?'':'opacity-50 cursor-not-allowed'}" 
-                            title="Hapus Transaksi"
-                            onclick="hapusLaporan(${t.id})" ${canDel?'':'disabled'}>
-                        <i class="fa-solid fa-trash-can"></i>
+                <td class="p-3">${formatCurrency(totalValue)}</td> 
+                <td class="p-3 font-semibold text-green-600 dark:text-green-400">
+                    ${formatCurrency(laba)} 
+                </td>
+                
+                <td class="p-3 flex gap-2">
+                    <button onclick="deleteTransaksi('${transaksiIdSafe}', ${produkIdSafe}, ${qtyValue})"
+                            class="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-red-700 transition-all shadow-sm"
+                            title="Hapus Transaksi">
+                        <i class="fa-solid fa-trash"></i> Hapus
                     </button>
                 </td>
-             </tr>`;
-        }).join('');
+            `;
+            laporanTable.appendChild(row);
+        });
+
+    } catch (error) {
+        Swal.fire('Error', `Gagal memuat laporan: ${error.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// Ganti seluruh fungsi deleteTransaksi() Anda di script.js:
+
+async function deleteTransaksi(transaksiId, produkId, qty) {
+    // 1. Konfirmasi Hapus
+    const result = await Swal.fire({
+        title: 'Yakin Hapus Transaksi?',
+        text: "Tindakan ini permanen. Stok produk akan dikembalikan jika ini bukan transaksi DP.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Ya, Hapus!',
+        cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) {
+        return;
+    }
+
+    showLoading('Menghapus transaksi...');
+
+    try {
+        // --- STEP 2: Ambil Detail Transaksi untuk Identifikasi Tipe dan Nota ---
+        const { data: detailTrans, error: detailErr } = await supabase
+            .from('transaksi')
+            // Penting: Ambil nota_id untuk mencari PO jika ini transaksi Pelunasan
+            .select('nama_pembeli, produk_id, qty, nota_id') 
+            .eq('id', transaksiId)
+            .single();
+
+        if (detailErr || !detailTrans) {
+            // Lanjutkan menghapus jika gagal mengambil detail, tapi berikan peringatan.
+            console.error("Gagal mengambil detail transaksi:", detailErr);
+        }
+
+        // Cek Tipe Transaksi
+        const buyerName = detailTrans?.nama_pembeli || '';
+        const isDpTransaction = buyerName.includes('(DP PO)');
+        const isPelunasanTransaction = buyerName.includes('(PELUNASAN)');
         
-    } catch(e) { 
-        console.error(e);
-        // Colspan disesuaikan jadi 10 karena kolom bertambah
-        laporanTable.innerHTML = `<tr><td colspan="10" class="text-center p-4 text-red-500">Gagal memuat laporan.</td></tr>`; 
+        // Hanya kembalikan stok jika BUKAN DP PO
+        const shouldRestoreStock = !isDpTransaction; 
+        
+        // 3. Hapus Transaksi Utama
+        const { error: deleteError } = await supabase
+            .from('transaksi')
+            .delete()
+            .eq('id', transaksiId);
+
+        if (deleteError) throw deleteError;
+
+        
+        // --- 4. LOGIKA PENGEMBALIAN STOK AKURAT ---
+        
+        if (shouldRestoreStock) {
+            
+            if (isPelunasanTransaction) {
+                // A. Pelunasan PO: Ambil detail PO dan kembalikan SEMUA item di dalamnya
+                
+                if (!detailTrans.nota_id) {
+                    throw new Error("Gagal mengembalikan stok: nota_id Pelunasan tidak ditemukan.");
+                }
+
+                // Ambil detail PO dari tabel preorder
+                const { data: poDetail, error: poErr } = await supabase
+                    .from('preorder')
+                    .select('items_json')
+                    .eq('nota_id', detailTrans.nota_id)
+                    .single();
+
+                if (poErr || !poDetail || !Array.isArray(poDetail.items_json)) {
+                    console.error("Gagal mendapatkan detail PO untuk pengembalian stok:", poErr);
+                    throw new Error("Gagal mengembalikan stok PO karena data item PO tidak ditemukan.");
+                }
+                
+                // Loop dan kembalikan stok untuk setiap item di PO
+                const itemsToRestore = poDetail.items_json;
+                let itemsRestoredCount = 0;
+
+                for (const item of itemsToRestore) {
+                    const currentProductId = item.produk_id;
+                    const currentQty = item.qty;
+
+                    // Fetch current stock
+                    const { data: produk, error: fetchError } = await supabase
+                        .from('produk')
+                        .select('stok')
+                        .eq('id', currentProductId)
+                        .single();
+
+                    if (!fetchError && produk) {
+                        const newStock = produk.stok + currentQty;
+                        const { error: updateError } = await supabase
+                            .from('produk')
+                            .update({ stok: newStock })
+                            .eq('id', currentProductId);
+                        
+                        if (!updateError) {
+                            itemsRestoredCount++;
+                        }
+                    } else {
+                        console.warn(`Produk ID ${currentProductId} tidak ditemukan untuk dikembalikan stoknya.`);
+                    }
+                }
+                
+                if (itemsRestoredCount > 0) {
+                     Swal.fire('Terhapus!', `Transaksi Pelunasan PO berhasil dihapus. ${itemsRestoredCount} jenis produk telah dikembalikan stoknya.`, 'success');
+                } else {
+                     Swal.fire('Terhapus!', 'Transaksi Pelunasan PO berhasil dihapus, namun tidak ada stok produk yang berhasil dikembalikan (cek konsol).', 'warning');
+                }
+
+            } else {
+                // B. Penjualan Reguler: Kembalikan stok berdasarkan QTY Transaksi
+                
+                const restoreProdukId = detailTrans.produk_id;
+                const restoreQty = detailTrans.qty; 
+                
+                const { data: produk, error: fetchError } = await supabase
+                    .from('produk')
+                    .select('stok')
+                    .eq('id', restoreProdukId)
+                    .single();
+
+                if (fetchError || !produk) {
+                    console.warn(`Produk ID ${restoreProdukId} tidak ditemukan di tabel produk. Hanya menghapus transaksi.`);
+                } else {
+                    const newStock = produk.stok + restoreQty;
+                    const { error: updateError } = await supabase
+                        .from('produk')
+                        .update({ stok: newStock })
+                        .eq('id', restoreProdukId);
+
+                    if (updateError) throw updateError;
+                    
+                    Swal.fire('Terhapus!', 'Transaksi Penjualan berhasil dihapus dan stok telah dikembalikan.', 'success');
+                }
+            }
+        } else {
+            // Transaksi DP PO: Stok tidak dikembalikan
+            Swal.fire(
+                'Terhapus!',
+                'Transaksi DP PO berhasil dihapus. Stok tidak diubah.',
+                'success'
+            );
+        }
+
+        loadLaporan(); // Muat ulang laporan setelah aksi
+        
+    } catch (error) {
+        console.error("Error saat menghapus transaksi:", error);
+        Swal.fire(
+            'Gagal!',
+            `Gagal menghapus transaksi: ${error.message}.`,
+            'error'
+        );
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Memuat dan menampilkan detail struk di modal.
+ */
+async function viewReceipt(transaksiId, tipe) {
+    const receiptModal = document.getElementById('receiptModal');
+    const receiptContent = document.getElementById('receiptContent');
+
+    showLoading('Memuat detail struk...');
+
+    try {
+        // Tampilkan modal struk
+        receiptModal.classList.remove('hidden');
+        
+        // Atur event listener untuk tombol tutup modal
+        document.getElementById('closeModalBtn').onclick = () => {
+            receiptModal.classList.add('hidden');
+        };
+        
+        // --- LOGIKA FETCH DATA STRUK ---
+        
+        // Contoh: Mengambil data transaksi berdasarkan ID
+        const { data: receiptData, error } = await supabase
+            .from('transaksi')
+            .select('*')
+            .eq('id', transaksiId)
+            .single();
+
+        if (error || !receiptData) {
+             throw new Error('Data struk tidak ditemukan.');
+        }
+
+        // --- Di sini Anda perlu memanggil fungsi untuk membangun HTML struk ---
+        // Karena saya tidak punya fungsi buildReceiptHTML(), saya berikan placeholder detail
+        receiptContent.innerHTML = `
+            <div class="max-w-xs mx-auto text-center p-2">
+                <h4 class="font-bold text-lg mb-2">DETAIL TRANSAKSI</h4>
+                <p>ID: ${transaksiId}</p>
+                <p>Tipe: ${tipe}</p>
+                <p>Total: ${formatCurrency(receiptData.total || receiptData.total_harga)}</p>
+                <p class="mt-4 text-sm text-yellow-600">
+                    Sistem siap mencetak. Lanjutkan implementasi fungsi buildReceiptHTML().
+                </p>
+            </div>
+        `;
+
+    } catch (error) {
+        receiptContent.innerHTML = `<div class="p-4 text-center text-red-600">Gagal memuat: ${error.message}</div>`;
+    } finally {
+        hideLoading();
     }
 }
 
@@ -1331,74 +1724,7 @@ function handleConfirmNo() {
     refreshAllData();
 }
 
-function showReceiptModal(items, date, buyer) {
-    receiptDateEl.textContent = formatTanggal(date);
-    if(receiptKasirNameEl) receiptKasirNameEl.textContent = globalCurrentUserName;
-    if(receiptNamaPembeliEl) receiptNamaPembeliEl.textContent = buyer;
-    
-    let sum = 0;
-    receiptItemsEl.innerHTML = items.map(i => {
-        const tot = i.total || (i.harga_satuan * i.qty);
-        sum += tot;
-        
-        let infoHarga = `${i.qty} x ${formatRupiah(i.harga_satuan)}`;
-        
-        if (i.diskon_persen > 0) {
-            // [LOGIKA BARU]
-            // Prioritas 1: Gunakan 'harga_asli' dari database (History)
-            // Prioritas 2: Jika data lama tidak punya history, hitung manual (Fallback)
-            let hargaNormalVal;
-            if (i.harga_asli) {
-                hargaNormalVal = i.harga_asli;
-            } else {
-                // Rumus mundur: Harga Akhir / (Faktor Diskon)
-                hargaNormalVal = i.harga_satuan / ((100 - i.diskon_persen) / 100);
-            }
-            
-            infoHarga = `
-                <div style="margin-bottom: 2px;">${i.qty} x ${formatRupiah(i.harga_satuan)}</div>
-                <div class="text-xs text-slate-500" style="line-height: 1; position: relative; display: inline-block;">
-                    <span style="position: relative; display: inline-block; color: #94a3b8;">
-                        ${formatRupiah(hargaNormalVal)}
-                        <span style="
-                            position: absolute;
-                            left: 0;
-                            top: 45%; 
-                            width: 100%;
-                            height: 1.5px;
-                            background-color: #475569;
-                            content: '';
-                            display: block;">
-                        </span>
-                    </span>
-                    <span class="italic ml-1 font-medium text-slate-600">(Disc ${i.diskon_persen}%)</span>
-                </div>
-            `;
-        }
-
-        return `<tr class="border-b border-dashed border-slate-300 dark:border-slate-600">
-                    <td class="pt-1 font-medium" colspan="2" style="line-height: 1.2; vertical-align: bottom;">
-                        ${escapeHtml(i.nama)}
-                    </td>
-                </tr>
-                <tr>
-                    <td class="pl-2 pb-2 text-slate-700 dark:text-slate-300" style="width:60%; line-height: 1.2; vertical-align: top;">
-                        ${infoHarga}
-                    </td>
-                    <td class="text-right font-medium pb-2" colspan="2" style="line-height: 1.2; vertical-align: top;">
-                        ${formatRupiah(tot)}
-                    </td>
-                </tr>`;
-    }).join('');
-    
-    receiptTotalEl.textContent = formatRupiah(sum);
-    receiptModal.classList.remove('hidden');
-    hideLoading();
-}
-
-window.reprintReceipt = function(data, date, buyer) {
-    showReceiptModal(Array.isArray(data) ? data : [data], date, buyer);
-}
+// === STRUK & PRINT LOGIC ===
 
 function closeReceiptModal(refresh) {
     receiptModal.classList.add('hidden');
@@ -1440,7 +1766,6 @@ function exportToExcel() {
         "Produk": t.produk?.nama || 'Produk Dihapus',
         "Pembeli": t.nama_pembeli || '',
         
-        // [BARU]
         "Modal Satuan": canSee ? (t.modal_history || 0) : '-',
         "Harga Normal": t.harga_jual_history || 0,
         "Diskon (%)": t.diskon_persen || 0,
@@ -1454,4 +1779,535 @@ function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
     XLSX.writeFile(wb, "Laporan_Alza_Store.xlsx");
+}
+
+/* ========================================= */
+/* FITUR PRE-ORDER (PO) SYSTEM - FINAL       */
+/* ========================================= */
+
+// --- A. LOGIKA STRUK UNIFIED (KASIR BIASA & PO JADI SATU) ---
+/**
+ * Menampilkan Modal Struk.
+ * @param {Array} items - Array barang
+ * @param {Date} date - Tanggal transaksi
+ * @param {String} buyer - Nama pembeli
+ * @param {Object|null} poData - Data khusus PO (jika null = struk biasa)
+ */
+function showReceiptModal(items, date, buyer, poData = null) {
+    // 1. Reset Tampilan
+    const poSection = document.getElementById('receiptPOInfo');
+    if(poSection) poSection.classList.add('hidden');
+    
+    const titleEl = document.getElementById('receiptTitle');
+    if(titleEl) titleEl.textContent = 'STRUK PEMBAYARAN';
+
+    // 2. Isi Data Dasar
+    document.getElementById('receiptDate').textContent = formatTanggal(date);
+    document.getElementById('receiptNamaPembeli').textContent = buyer || ' ';
+    
+    if(document.getElementById('receiptKasirName')) {
+        document.getElementById('receiptKasirName').textContent = typeof globalCurrentUserName !== 'undefined' ? globalCurrentUserName : 'Admin';
+    }
+
+    // --- [LOGIKA BARU: SEMBUNYIKAN NOTA JIKA BUKAN PO] ---
+    const labelNota = document.getElementById('labelNota');
+    const valueNota = document.getElementById('receiptNota');
+    let finalNotaId = '';
+
+    if (poData) {
+        // Jika PO, TAMPILKAN Nota ID (Contoh: PO-12345)
+        finalNotaId = poData.nota_id;
+        if(labelNota) labelNota.classList.remove('hidden');
+        if(valueNota) valueNota.classList.remove('hidden');
+    } else {
+        // Jika Transaksi Biasa, SEMBUNYIKAN Nota ID, TIDAK perlu generate ID baru di sini.
+        if(labelNota) labelNota.classList.add('hidden');
+        if(valueNota) valueNota.classList.add('hidden');
+    }
+
+    // Set Nota (Ini akan diisi dari reprintReceipt jika ada data lama)
+    if(valueNota) valueNota.textContent = finalNotaId; 
+    // -----------------------------------------------------
+
+    // 3. Render Daftar Barang
+    let sum = 0;
+    const itemsEl = document.getElementById('receiptItems');
+    itemsEl.innerHTML = items.map(i => {
+        const hargaSatuan = i.harga_jual_final || i.harga_satuan || i.harga_jual;
+        const hargaAsli = i.harga_asli || i.harga_jual_history || hargaSatuan;
+        const diskon = i.diskon_persen || 0;
+        const qty = i.qty;
+        
+        const subtotal = hargaSatuan * qty;
+        sum += subtotal;
+
+        let infoHarga = `${qty} x ${formatRupiah(hargaSatuan)}`;
+        if (diskon > 0) {
+            infoHarga = `
+                <div>${qty} x ${formatRupiah(hargaSatuan)}</div>
+                <div class="text-[10px] text-slate-500">
+                    <span class="line-through">${formatRupiah(hargaAsli)}</span> 
+                    <span class="italic">(-${diskon}%)</span>
+                </div>`;
+        }
+
+        return `
+            <tr class="border-b border-dashed border-slate-300 dark:border-slate-600">
+                <td class="py-1 align-top w-[60%]">
+                    <div class="font-medium leading-tight">${escapeHtml(i.nama)}</div>
+                    <div class="text-xs text-slate-500">${infoHarga}</div>
+                </td>
+                <td class="py-1 align-top text-right font-medium">
+                    ${formatRupiah(subtotal)}
+                </td>
+            </tr>`;
+    }).join('');
+
+    // 4. Isi Total
+    const finalTotal = poData ? poData.total : sum;
+    document.getElementById('receiptTotal').textContent = formatRupiah(finalTotal);
+
+    // 5. [LOGIKA PO]
+    if (poData && poSection) {
+        poSection.classList.remove('hidden');
+        
+        const judul = poData.status === 'LUNAS' ? 'PELUNASAN PO' : 'BUKTI DP (PO)';
+        if(titleEl) titleEl.textContent = judul;
+
+        document.getElementById('receiptDP').textContent = formatRupiah(poData.dp);
+        document.getElementById('receiptSisa').textContent = formatRupiah(poData.sisa);
+        document.getElementById('receiptStatus').textContent = poData.status;
+        
+        let infoTambahan = poData.estimasi ? `Estimasi: ${formatTanggal(poData.estimasi).split(',')[0]}` : '';
+        if(poData.catatan) {
+            infoTambahan += `<br>
+            <div class="mt-1 pt-1 border-t border-dotted border-slate-300 text-left">
+                <span class="font-bold text-[10px]">Note:</span> 
+                <span class="italic">${escapeHtml(poData.catatan)}</span>
+            </div>`;
+        }
+        document.getElementById('receiptEstimasi').innerHTML = infoTambahan;
+    }
+
+    // 6. Tampilkan Modal
+    document.getElementById('receiptModal').classList.remove('hidden');
+}
+
+// Fungsi Wrapper untuk Cetak PO
+function printStrukPO(items, pembeli, total, dp, sisa, estimasi, nota, status, catatan) {
+    const dataPO = { nota_id: nota, total, dp, sisa, estimasi, status, catatan };
+    showReceiptModal(items, new Date(), pembeli, dataPO);
+}
+
+// Update fungsi handleConfirmYes (Sales Biasa) agar kompatibel
+function handleConfirmYes() {
+    document.getElementById('confirmModal').classList.add('hidden');
+    
+    // Konversi data keranjang ke format struk
+    const items = lastProcessedCart.map(i => ({ 
+        nama: i.nama, 
+        qty: i.qty, 
+        total: i.harga_jual_final * i.qty, 
+        harga_satuan: i.harga_jual_final,
+        diskon_persen: i.diskon_persen, 
+        harga_asli: i.harga_asli 
+    }));
+    
+    // Panggil showReceiptModal dengan parameter poData = NULL (Mode Sales Biasa)
+    showReceiptModal(items, new Date(), lastProcessedPembeli, null); 
+}
+
+
+// --- B. LOGIKA INPUT & SIMPAN PO ---
+
+// 1. Buka Modal Input PO dari Kasir
+function bukaModalPO() {
+    if (keranjang.length === 0) return Swal.fire('Keranjang Kosong', 'Pilih produk dulu', 'warning');
+    
+    // Hitung Total Keranjang
+    const total = keranjang.reduce((sum, item) => {
+        let harga = item.harga_jual;
+        if (item.diskon_persen > 0) harga = harga - (harga * item.diskon_persen / 100);
+        return sum + (harga * item.qty);
+    }, 0);
+
+    // Reset Form Modal PO
+    document.getElementById('poTotalDisplay').textContent = formatRupiah(total);
+    document.getElementById('poNama').value = '';
+    document.getElementById('poEstimasi').value = '';
+    document.getElementById('poDP').value = '';
+    document.getElementById('poCatatan').value = ''; // Reset Catatan
+    document.getElementById('poSisaDisplay').textContent = formatRupiah(total);
+    
+    // Auto Hitung Sisa saat ketik DP
+    const dpInput = document.getElementById('poDP');
+    dpInput.oninput = () => {
+        const dp = Number(dpInput.value);
+        const sisa = total - dp;
+        document.getElementById('poSisaDisplay').textContent = formatRupiah(sisa < 0 ? 0 : sisa);
+    };
+
+    document.getElementById('modalInputPO').classList.remove('hidden');
+}
+
+// Ganti seluruh fungsi prosesSimpanPO() Anda:
+
+async function prosesSimpanPO() {
+    const nama = document.getElementById('poNama').value;
+    const estimasi = document.getElementById('poEstimasi').value;
+    const dp = Number(document.getElementById('poDP').value);
+    const catatan = document.getElementById('poCatatan').value.trim();
+    
+    // Hitung Total Jual (Harga Final)
+    const totalJual = keranjang.reduce((sum, item) => {
+        let harga = item.harga_jual;
+        return sum + (harga * item.qty);
+    }, 0);
+
+    // [BARU] Hitung Total Modal
+    const totalModal = keranjang.reduce((sum, item) => {
+        return sum + (item.modal * item.qty);
+    }, 0);
+
+    if(!nama) return Swal.fire('Info', 'Nama pembeli wajib diisi', 'warning');
+    if(dp < 0) return Swal.fire('Info', 'DP tidak boleh minus', 'warning');
+    if(dp >= totalJual) return Swal.fire('Info', 'Jika lunas, gunakan tombol "Bayar Lunas" saja', 'info');
+
+    showLoading('Memproses PO...');
+    
+    try {
+        const notaId = `PO-${Date.now().toString().slice(-6)}`;
+        const sisa = totalJual - dp;
+
+        // A. Kurangi Stok Produk (Menggunakan RPC Database)
+        const updateStokPromises = keranjang.map(item => {
+             return supabase.rpc('kurangi_stok', { 
+                 p_id: item.produk_id, 
+                 p_qty: item.qty 
+             });
+        });
+        await Promise.all(updateStokPromises);
+
+        // B. Simpan ke Tabel PREORDER
+        const { error: errPO } = await supabase.from('preorder').insert({
+            nota_id: notaId,
+            nama_pembeli: nama,
+            items_json: keranjang,
+            total_transaksi: totalJual,
+            jumlah_dp: dp,
+            sisa_tagihan: sisa,
+            estimasi_selesai: estimasi || null,
+            status: 'BELUM_LUNAS',
+            catatan: catatan,
+            // [FIX KRITIS 1] SIMPAN TOTAL MODAL PO UNTUK REFERENSI
+            total_modal_po: totalModal 
+        });
+        if(errPO) throw errPO;
+
+        // C. Simpan DP ke Tabel TRANSAKSI (Laporan Penjualan)
+        if (dp > 0) {
+            const refProdukId = keranjang[0].produk_id; 
+            
+            await supabase.from('transaksi').insert({
+                produk_id: refProdukId, 
+                qty: 1,
+                total: dp, // Hanya DP yang masuk total hari ini
+                // [FIX KRITIS 2] LABA DIPOSTING 0 SAAT DP, UNTUK DIHITUNG LENGKAP SAAT PELUNASAN
+                keuntungan: 0, 
+                nota_id: notaId,
+                nama_pembeli: `${nama} (DP PO)`,
+                created_at: getWibTimestampString()
+            });
+        }
+
+        // D. Cetak Struk DP & Bersihkan Layar
+        printStrukPO(keranjang, nama, totalJual, dp, sisa, estimasi, notaId, 'DP', catatan);
+        
+        keranjang = [];
+        renderKeranjang();
+        document.getElementById('modalInputPO').classList.add('hidden');
+        Swal.fire('Berhasil', 'PO tersimpan. Stok & Laporan terupdate.', 'success');
+        
+        loadStok();
+        const pageActive = document.querySelector('.page.active');
+        if(pageActive && pageActive.id === 'preorder') {
+            loadPreorders();
+        }
+
+    } catch(err) {
+        console.error(err);
+        Swal.fire('Gagal', err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+
+// --- C. LOGIKA DAFTAR PO & PELUNASAN ---
+
+// Ganti seluruh fungsi loadPreorders() Anda:
+
+async function loadPreorders() {
+    const tBody = document.getElementById('poTableBody');
+    if(!tBody) return;
+
+    tBody.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading...</td></tr>';
+    
+    const { data, error } = await supabase
+        .from('preorder')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if(error) {
+        tBody.innerHTML = '<tr><td colspan="7" class="text-center text-red-500">Gagal: ' + error.message + '</td></tr>';
+        return;
+    }
+
+    if(!data || data.length === 0) {
+        tBody.innerHTML = '<tr><td colspan="7" class="text-center p-4 italic text-slate-500">Belum ada data PO</td></tr>';
+        return;
+    }
+
+    tBody.innerHTML = data.map(po => {
+        const items = po.items_json || [];
+        const itemList = items.map(i => `• ${escapeHtml(i.nama)} (${i.qty}x)`).join('<br>');
+        
+        const catatanShow = po.catatan 
+            ? `<div class="bg-yellow-50 dark:bg-slate-700 border border-yellow-100 dark:border-slate-600 p-2 rounded text-xs italic text-slate-600 dark:text-slate-300 whitespace-pre-wrap max-w-[200px]">${escapeHtml(po.catatan)}</div>` 
+            : '<span class="text-slate-300">-</span>';
+
+        let statusBadge = po.status === 'LUNAS' 
+            ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">LUNAS</span>'
+            : '<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">BELUM LUNAS</span>';
+
+        // Persiapan data untuk tombol aksi
+        const jsonItems = JSON.stringify(items).replace(/"/g, '&quot;');
+        const catatanSafe = (po.catatan || '').replace(/"/g, '&quot;');
+        
+        let btnAksi;
+        
+        // [FIX UTAMA] Tombol Lunasi/Hapus muncul jika status BUKAN 'LUNAS'
+        if (po.status !== 'LUNAS') {
+            btnAksi = `
+                <div class="flex flex-col gap-2">
+                    <button onclick='bukaModalPelunasan(${JSON.stringify(po)})' class="bg-green-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-green-600 transition">
+                       <i class="fa-solid fa-money-bill"></i> Lunasi
+                    </button>
+                    <button onclick="hapusPreorder('${po.id}', '${po.nota_id}', ${po.jumlah_dp})" class="bg-red-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-red-600 transition">
+                       <i class="fa-solid fa-trash"></i> Hapus
+                    </button>
+                </div>
+            `;
+        } else {
+            // Sudah Lunas, hanya tampilkan struk
+            btnAksi = `
+                <button onclick='printStrukPO(${jsonItems}, "${po.nama_pembeli}", ${po.total_transaksi}, ${po.jumlah_dp}, 0, "${po.estimasi_selesai}", "${po.nota_id}", "LUNAS", "${catatanSafe}")' class="bg-sky-500 text-white px-3 py-1 rounded shadow text-xs hover:bg-sky-600 transition">
+                    <i class="fa-solid fa-print"></i> Struk
+                </button>
+            `;
+        }
+
+        return `
+            <tr class="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
+                <td class="p-4 align-top">
+                    <div class="font-bold text-slate-800 dark:text-slate-200">${escapeHtml(po.nama_pembeli)}</div>
+                    <div class="text-xs text-slate-500 font-mono">${po.nota_id}</div>
+                    <div class="text-xs text-slate-400 mt-1">${formatTanggal(po.created_at)}</div>
+                </td>
+                <td class="p-4 text-xs text-slate-600 dark:text-slate-400 align-top leading-relaxed">${itemList}</td>
+                
+                <td class="p-4 align-top">
+                    ${catatanShow}
+                </td>
+
+                <td class="p-4 text-sm align-top">
+                    ${po.estimasi_selesai ? formatTanggal(po.estimasi_selesai).split(',')[0] : '-'}
+                </td>
+                <td class="p-4 text-right align-top">
+                    <div class="font-bold text-slate-700 dark:text-slate-300">Total: ${formatRupiah(po.total_transaksi)}</div>
+                    <div class="text-xs text-purple-600">DP: ${formatRupiah(po.jumlah_dp)}</div>
+                    <div class="text-xs text-red-500 font-bold mt-1">Sisa: ${formatRupiah(po.sisa_tagihan)}</div>
+                </td>
+                <td class="p-4 text-center align-top">${statusBadge}</td>
+                <td class="p-4 text-center align-top">${btnAksi}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Menghapus Preorder yang belum lunas dan transaksi DP terkait.
+ * @param {string} poId ID unik baris preorder
+ * @param {string} notaId ID Nota PO (PO-xxxxxx)
+ * @param {number} dpJumlah Jumlah DP yang sudah masuk (untuk konfirmasi)
+ */
+async function hapusPreorder(poId, notaId, dpJumlah) {
+    if (dpJumlah > 0) {
+        const confirm = await Swal.fire({
+            title: 'Hapus PO Belum Lunas?',
+            html: `Yakin ingin menghapus PO **${notaId}**?<br>
+                   Transaksi DP sebesar **${formatCurrency(dpJumlah)}** (jika ada) di Laporan juga akan dihapus.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#dc2626'
+        });
+        if (!confirm.isConfirmed) return;
+    } else {
+         const confirm = await Swal.fire({
+            title: 'Hapus PO Belum Lunas?',
+            text: `Yakin ingin menghapus PO ${notaId}?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#dc2626'
+        });
+        if (!confirm.isConfirmed) return;
+    }
+
+    showLoading('Menghapus PO dan Transaksi terkait...');
+
+    try {
+        // A. Hapus Transaksi DP yang masuk ke Laporan (Tabel Transaksi)
+        // Dihapus berdasarkan nota_id yang sama.
+        const { error: transError } = await supabase
+            .from('transaksi')
+            .delete()
+            .eq('nota_id', notaId);
+        
+        if (transError) {
+             console.error("Gagal menghapus transaksi DP:", transError);
+             // Lanjutkan, karena yang utama adalah menghapus record PO
+        }
+
+        // B. Hapus Record Master PO (Tabel Preorder)
+        const { error: poError } = await supabase
+            .from('preorder')
+            .delete()
+            .eq('id', poId);
+            
+        if (poError) throw poError;
+
+        Swal.fire('Berhasil Dihapus!', `Pre-Order ${notaId} telah dihapus.`, 'success');
+        
+        // Muat ulang daftar PO dan Stok (karena stok produk PO sudah dikurangi saat DP)
+        loadPreorders();
+        loadStok(); 
+
+    } catch (err) {
+        Swal.fire('Gagal', `Gagal menghapus PO: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 4. Buka Modal Pelunasan
+let activePO = null;
+function bukaModalPelunasan(po) {
+    activePO = po; // Simpan data PO yg sedang diedit ke variabel global
+    document.getElementById('pelunasanId').value = po.id;
+    document.getElementById('pelunasanSisa').textContent = formatRupiah(po.sisa_tagihan);
+    document.getElementById('editEstimasi').value = po.estimasi_selesai || '';
+    
+    document.getElementById('modalPelunasan').classList.remove('hidden');
+}
+
+// 5. Update Estimasi Saja (Fitur kecil di modal pelunasan)
+async function updateEstimasiOnly() {
+    if(!activePO) return;
+    const tglBaru = document.getElementById('editEstimasi').value;
+    
+    showLoading('Update Tanggal...');
+    const { error } = await supabase.from('preorder')
+        .update({ estimasi_selesai: tglBaru })
+        .eq('id', activePO.id);
+        
+    hideLoading();
+    if(error) Swal.fire('Gagal', error.message, 'error');
+    else {
+        Swal.fire('Sukses', 'Estimasi tanggal diperbarui', 'success');
+        loadPreorders(); 
+    }
+}
+
+// Ganti seluruh fungsi prosesLunasiAkhir() Anda di script.js:
+
+async function prosesLunasiAkhir() {
+    if(!activePO) return;
+    
+    // Total keuntungan penuh dihitung, tetapi tidak ditampilkan di SweetAlert
+    const totalModalPO = activePO.total_modal_po || 0;
+    const totalKeuntunganFinal = activePO.total_transaksi - totalModalPO;
+
+    // --- PERUBAHAN DI SINI: MENGHAPUS TAMPILAN LABA DARI KONFIRMASI ---
+    const konfirmasi = await Swal.fire({
+        title: 'Konfirmasi Pelunasan',
+        // Text/HTML hanya menampilkan sisa tagihan, BUKAN laba
+        html: `Terima pelunasan sebesar **${formatRupiah(activePO.sisa_tagihan)}**?`, 
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Lunasi',
+        confirmButtonColor: '#16a34a'
+    });
+    // -----------------------------------------------------------------
+
+    if(!konfirmasi.isConfirmed) return;
+
+    showLoading('Memproses Pelunasan...');
+    
+    try {
+        // A. Update Status PO jadi LUNAS
+        const { error: errPO } = await supabase.from('preorder')
+            .update({ 
+                status: 'LUNAS',
+                sisa_tagihan: 0,
+                tanggal_pelunasan: getWibTimestampString()
+            })
+            .eq('id', activePO.id);
+        if(errPO) throw errPO;
+
+        // B. Masukkan Sisa Pembayaran ke Laporan Penjualan (Tabel Transaksi)
+        const uangMasuk = activePO.sisa_tagihan;
+        if (uangMasuk > 0) {
+            const refProdukId = activePO.items_json && activePO.items_json.length > 0 
+                ? activePO.items_json[0].produk_id 
+                : null;
+            
+            await supabase.from('transaksi').insert({
+                produk_id: refProdukId, 
+                qty: 1,
+                // Total uang yang masuk hari ini (sisa tagihan)
+                total: uangMasuk, 
+                // Keuntungan diisi dengan LABA BERSIH TOTAL PO (sesuai logika)
+                keuntungan: totalKeuntunganFinal, 
+                nota_id: activePO.nota_id,
+                nama_pembeli: `${activePO.nama_pembeli} (PELUNASAN)`,
+                created_at: getWibTimestampString()
+            });
+        }
+
+        // C. Cetak Struk LUNAS
+        printStrukPO(
+            activePO.items_json, 
+            activePO.nama_pembeli, 
+            activePO.total_transaksi, 
+            activePO.jumlah_dp, 
+            0, // Sisa jadi 0
+            activePO.estimasi_selesai, 
+            activePO.nota_id, 
+            'LUNAS',
+            activePO.catatan
+        );
+        
+        document.getElementById('modalPelunasan').classList.add('hidden');
+        Swal.fire('LUNAS!', 'Pembayaran berhasil & Laba total tercatat.', 'success');
+        loadPreorders();
+
+    } catch (err) {
+        Swal.fire('Gagal', err.message, 'error');
+    } finally {
+        hideLoading();
+    }
 }
