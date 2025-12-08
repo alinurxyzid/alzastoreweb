@@ -317,7 +317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 3. Inactivity Timer
     let inactivityTimer; 
-    const INACTIVITY_TIMEOUT = 600000; // 10 Menit
+    const INACTIVITY_TIMEOUT = 1200000; // 10 Menit
 
     async function forceLogout() {
           console.log("Timeout: Logout paksa.");
@@ -2311,3 +2311,4 @@ async function prosesLunasiAkhir() {
         hideLoading();
     }
 }
+
