@@ -469,25 +469,45 @@
 
     <section id="laporan" class="page">
         <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg">
-          <div class="flex justify-between mb-6 flex-wrap gap-2">
+          <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
               <h2 class="text-xl font-semibold">Laporan Penjualan</h2>
-              <div class="flex gap-2">
+              
+              <div class="grid grid-cols-2 md:flex gap-2 w-full md:w-auto">
+                 
                  <input type="date" id="laporanTglMulai" 
-                     class="border p-2 rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" 
+                     class="col-span-1 md:w-auto border p-2 rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200 text-xs md:text-sm" 
                  />
                  <input type="date" id="laporanTglSelesai" 
-                     class="border p-2 rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" 
+                     class="col-span-1 md:w-auto border p-2 rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200 text-xs md:text-sm" 
                  />
-                 <button id="laporanFilterBtn" class="bg-blue-600 text-white px-4 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center gap-2">
-                   <i class="fa-solid fa-filter"></i> Filter
+                 
+                 <button id="laporanFilterBtn" class="col-span-1 md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center gap-2 text-sm">
+                   <i class="fa-solid fa-filter"></i> <span class="hidden sm:inline">Filter</span>
                  </button>
-                 <button id="exportExcelBtn" class="bg-green-600 text-white px-4 rounded-lg font-medium hover:bg-green-700 flex items-center justify-center gap-2">
-                   <i class="fa-solid fa-file-excel"></i> Excel
+                 <button id="exportExcelBtn" class="col-span-1 md:w-auto bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 flex items-center justify-center gap-2 text-sm">
+                   <i class="fa-solid fa-file-excel"></i> <span class="hidden sm:inline">Excel</span>
                  </button>
               </div>
           </div>
+          
           <div class="overflow-x-auto">
-              <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr><th class="p-3">Tanggal</th><th class="p-3">Produk</th><th class="p-3">Pembeli</th><th class="p-3">Modal</th><th class="p-3">Harga</th><th class="p-3 text-center">Disc</th><th class="p-3 text-center">Qty</th><th class="p-3">Total</th><th class="p-3">Laba</th><th class="p-3">Aksi</th></tr></thead><tbody id="laporanTable" class="divide-y dark:divide-slate-700"></tbody></table>
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-100 dark:bg-slate-700">
+                  <tr>
+                    <th class="p-3">Tanggal</th>
+                    <th class="p-3">Produk</th>
+                    <th class="p-3">Pembeli</th>
+                    <th class="p-3">Modal</th>
+                    <th class="p-3">Harga</th>
+                    <th class="p-3 text-center">Disc</th>
+                    <th class="p-3 text-center">Qty</th>
+                    <th class="p-3">Total</th>
+                    <th class="p-3">Laba</th>
+                    <th class="p-3">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="laporanTable" class="divide-y dark:divide-slate-700"></tbody>
+              </table>
           </div>
         </div>
     </section>
@@ -495,11 +515,26 @@
     <section id="admin" class="page">
         <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg">
           <h2 class="text-xl font-semibold mb-4">Manajemen User</h2>
-          <div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr><th class="p-3">User</th><th class="p-3">Nama</th><th class="p-3">Status</th><th class="p-3">Izin</th><th class="p-3">Aksi</th></tr></thead><tbody id="adminUsersTable" class="divide-y dark:divide-slate-700"></tbody></table></div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-100 dark:bg-slate-700">
+                <tr>
+                  <th class="p-3 text-left">User</th>
+                  
+                  <th class="p-3 text-left min-w-[250px]">Nama</th>
+                  
+                  <th class="p-3 text-left">Status</th>
+                  <th class="p-3 text-left">Izin</th>
+                  <th class="p-3 text-left">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTable" class="divide-y dark:divide-slate-700"></tbody>
+            </table>
+          </div>
         </div>
     </section>
 
-    <footer id="main-footer" class="mt-4 pb-24 sm:pb-6 text-center text-xs text-slate-500">
+    <footer id="main-footer" class="mt-4 pb-6 sm:pb-6 text-center text-xs text-slate-500">
         &copy; 2025 - Created by ALINURXYZ
     </footer>
 
