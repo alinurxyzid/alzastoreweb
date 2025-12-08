@@ -6,6 +6,9 @@ const MAIN_ADMIN_ID = 'cbb9f0e0-8155-41fd-8eb7-9aab185c665c';
 // UTILITY FUNCTIONS (Wajib ada dan diletakkan di bagian atas)
 // =========================================================
 
+let laporanPage = 0;
+const laporanPerPage = 10;
+
 // Pastikan fungsi formatDate Anda terlihat seperti ini:
 function formatDate(timestamp) {
     if (!timestamp) return '-';
@@ -80,6 +83,7 @@ function formatCurrency(amount) {
 let currentUserId = null;
 let globalCurrentUserName = 'Kasir';
 let userPermissions = {
+    role: '',          
     can_manage_stok: false,
     can_manage_laporan: false,
     can_see_finances: false
@@ -260,15 +264,20 @@ function escapeHtml(text) {
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
-// ---------- INITIALIZATION ----------
+// =========================================================
+// INITIALIZATION (GANTI SELURUH BLOK INI)
+// =========================================================
 document.addEventListener('DOMContentLoaded', async () => {
+    // Registrasi Plugin Chart.js (jika ada)
     if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
         Chart.register(ChartZoom);
     }
     
     const mainContent = document.getElementById('main-content');
     
-    // 1. Cek Sesi
+    // -----------------------------------------------------------
+    // 1. CEK SESI LOGIN
+    // -----------------------------------------------------------
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       window.location.href = 'login.html'; 
@@ -276,20 +285,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     currentUserId = session.user.id;
 
-    // 2. Ambil Profil
+    // -----------------------------------------------------------
+    // 2. AMBIL DATA PROFIL (PENTING: JANGAN DIHAPUS)
+    // -----------------------------------------------------------
+    // Inilah bagian yang sebelumnya hilang sehingga menyebabkan error "profile is not defined"
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('role, nama, can_manage_stok, can_manage_laporan, can_see_finances') 
       .eq('id', session.user.id)
       .single();
 
+    // Validasi jika profil gagal diambil atau error koneksi
     if (error || !profile) {
-      Swal.fire('Gagal', 'Gagal memverifikasi status Anda. Silakan login kembali.', 'error').then(() => {
+      Swal.fire('Gagal', 'Gagal memverifikasi status profil Anda. Silakan login kembali.', 'error').then(() => {
           supabase.auth.signOut().then(() => window.location.href = 'login.html');
       });
       return;
     }
     
+    // Cek apakah akun statusnya pending
     if (profile.role !== 'approved' && profile.role !== 'admin') {
       Swal.fire('Pending', 'Akun Anda masih menunggu persetujuan Admin.', 'warning').then(() => {
           supabase.auth.signOut().then(() => window.location.href = 'login.html');
@@ -297,15 +311,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    // -----------------------------------------------------------
+    // 3. SIMPAN IZIN KE VARIABEL GLOBAL
+    // -----------------------------------------------------------
     globalCurrentUserName = profile.nama || 'Kasir';
+    
+    // Kita mengisi variabel global userPermissions dengan data yang baru saja diambil
     userPermissions = {
-      can_manage_stok: profile.can_manage_stok,
-      can_manage_laporan: profile.can_manage_laporan,
-      can_see_finances: profile.can_see_finances
+        role: profile.role, // Simpan role (admin/approved)
+        can_manage_stok: profile.can_manage_stok,
+        can_manage_laporan: profile.can_manage_laporan, // Izin Hapus Laporan
+        can_see_finances: profile.can_see_finances
     };
     
+    // Tampilkan Konten Utama setelah data siap
     mainContent.classList.remove('hidden');
 
+    // Sembunyikan Menu Admin jika bukan Admin Utama
     if (currentUserId !== MAIN_ADMIN_ID) {
         const adminNavButton = document.querySelector('.nav-btn[data-page="admin"]');
         if (adminNavButton) adminNavButton.classList.add('hidden');
@@ -313,14 +335,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(adminPageSection) adminPageSection.classList.add('hidden');
     }
 
+    // Terapkan UI berdasarkan izin (sembunyikan tombol stok/keuntungan jika tidak ada izin)
     applyUiPermissions();
 
-    // 3. Inactivity Timer
+    // -----------------------------------------------------------
+    // 4. SETUP AUTO LOGOUT (INACTIVITY TIMER)
+    // -----------------------------------------------------------
     let inactivityTimer; 
-    const INACTIVITY_TIMEOUT = 1200000; // 10 Menit
+    const INACTIVITY_TIMEOUT = 1200000; // 20 Menit
 
     async function forceLogout() {
           console.log("Timeout: Logout paksa.");
+          // Hapus semua listener agar tidak menumpuk
           window.removeEventListener('mousemove', resetInactivityTimer);
           window.removeEventListener('mousedown', resetInactivityTimer);
           window.removeEventListener('keypress', resetInactivityTimer);
@@ -344,6 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           inactivityTimer = setTimeout(forceLogout, INACTIVITY_TIMEOUT);
     }
 
+    // Mulai Timer
     resetInactivityTimer();
     window.addEventListener('mousemove', resetInactivityTimer);
     window.addEventListener('mousedown', resetInactivityTimer);
@@ -351,7 +378,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('scroll', resetInactivityTimer);
     window.addEventListener('touchstart', resetInactivityTimer);
 
-    // 4. Load Data
+    // -----------------------------------------------------------
+    // 5. LOAD DATA AWAL APLIKASI
+    // -----------------------------------------------------------
     showLoading('Menghubungkan ke database...');
     try {
         await refreshAllData();
@@ -365,15 +394,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideLoading();
     }
 
-    // --- LOGIKA EVENT LISTENERS (MENGGUNAKAN SAFE BIND) ---
+    // -----------------------------------------------------------
+    // 6. SETUP EVENT LISTENERS (TOMBOL & FORM)
+    // -----------------------------------------------------------
 
-    // Fungsi bantuan agar tidak error jika elemen tidak ada di HTML
     const safeBind = (id, event, func) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener(event, func);
     };
 
-    // 5. Navigasi
+    // Navigasi Menu
     navButtons.forEach(btn => {
         btn.addEventListener('click', () => {
             showPage(btn.dataset.page);
@@ -385,34 +415,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Form Listener STOK
     safeBind('formStok', 'submit', handleStokSubmit);
 
-    // Form Listener KASIR (Clone untuk Reset Event)
+    // Form Listener KASIR (Clone untuk Reset Event Lama)
     const oldFormKasir = document.getElementById('formKasir');
     if (oldFormKasir) {
-        // Clone form untuk membuang semua event listener "hantu" sebelumnya
         const newFormKasir = oldFormKasir.cloneNode(true);
         oldFormKasir.parentNode.replaceChild(newFormKasir, oldFormKasir);
     }
     
-    // Ambil referensi elemen-elemen di dalam form BARU
+    // Re-bind Event Kasir Baru
     const freshFormKasir = document.getElementById('formKasir');
     if (freshFormKasir) {
-        // Cari tombol "Tambah" (tombol pertama di form)
         const btnTambah = freshFormKasir.querySelector('button'); 
-        // Cari Input Qty
         const inputQty = document.getElementById('kasirQty');
 
-        // [KUNCI] Ubah type tombol jadi 'button' agar tidak memicu submit form bawaan browser
+        // Klik Tombol Tambah
         if(btnTambah) {
             btnTambah.type = 'button'; 
-            
-            // Pasang listener KLIK manual
             btnTambah.addEventListener('click', (e) => {
                 e.preventDefault(); 
                 handleAddToCart(e);
             });
         }
 
-        // [KUNCI] Pasang listener ENTER pada input Qty (pengganti submit form)
+        // Tekan Enter di Qty
         if(inputQty) {
             inputQty.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -422,7 +447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Tombol Clear
+        // Tombol Clear Form
         const btnClearKasir = document.getElementById('kasirClear'); 
         if(btnClearKasir) {
             btnClearKasir.type = 'button';
@@ -438,7 +463,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Listener Search pada elemen BARU
+        // Live Search Produk
         const freshSearchEl = document.getElementById('kasirProdukSearch');
         if (freshSearchEl) {
             freshSearchEl.addEventListener('input', handleProdukSearch);
@@ -448,33 +473,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Input Nama Pembeli
         const kasirNamaInput = document.getElementById('kasirNamaPembeli');
         if (kasirNamaInput) {
             kasirNamaInput.addEventListener('input', updateKeranjangPembeliDisplay);
         }
     }
 
-
-    // Binding Tombol Modal & Export
+    // Binding Tombol Lainnya
     safeBind('exportExcelBtn', 'click', exportToExcel);
-    safeBind('laporanFilterBtn', 'click', loadLaporan);
+    safeBind('laporanFilterBtn', 'click', () => loadLaporan(false)); // Fix bind filter
     safeBind('closeModalBtn', 'click', () => closeReceiptModal(true));
     safeBind('printReceiptBtn', 'click', printReceipt);
     safeBind('exportJpgBtn', 'click', exportReceiptAsJpg);
 
-    // Binding Tombol Konfirmasi
     safeBind('confirmModalYesBtn', 'click', handleConfirmYes);
     safeBind('confirmModalNoBtn', 'click', handleConfirmNo);
     safeBind('closeConfirmBtn', 'click', handleConfirmNo);
 
-    // Binding Tombol Keranjang
     safeBind('prosesKeranjangBtn', 'click', handleProsesKeranjang);
     safeBind('clearKeranjangBtn', 'click', handleClearKeranjang);
 
-    // Binding Tombol Stok
     safeBind('tambahVarianBtn', 'click', tambahVarianInput);
     
-    // Binding Tombol Logout
+    // Logout Logic
     safeBind('logout-button', 'click', () => {
         const modal = document.getElementById('logoutConfirmModal');
         if(modal) modal.classList.remove('hidden');
@@ -492,11 +514,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(modal) modal.classList.add('hidden');
     });
 
-    // Set Tanggal Laporan Default
+    // Set Default Tanggal Laporan (Hari Ini)
     const today = new Date().toISOString().split('T')[0];
-    safeBind('laporanTglMulai', 'input', () => {}); // Just bind to avoid null error
-    safeBind('laporanTglSelesai', 'input', () => {}); // Just bind to avoid null error
-    
     const tglMulai = document.getElementById('laporanTglMulai');
     const tglSelesai = document.getElementById('laporanTglSelesai');
 
@@ -1389,90 +1408,156 @@ async function handleProsesKeranjang() {
 
 // Ganti seluruh fungsi loadLaporan yang ada di script.js
 
-async function loadLaporan() {
+async function loadLaporan(append = false) {
+    const tglMulai = document.getElementById('laporanTglMulai').value;
+    const tglSelesai = document.getElementById('laporanTglSelesai').value;
+
+    if (!append) {
+        laporanPage = 0;
+        document.getElementById('laporanTable').innerHTML = '';
+        const btnMore = document.getElementById('btnLoadMore');
+        if(btnMore) btnMore.classList.add('hidden');
+    }
+    
     showLoading('Memuat Laporan...');
 
+    const from = laporanPage * laporanPerPage;
+    const to = from + laporanPerPage - 1;
+
     try {
-        let { data: transactions, error } = await supabase
-            .from('transaksi')
-            .select('*') 
-            .order('created_at', { ascending: false });
+        let query = supabase.from('transaksi').select('*');
+
+        if (tglMulai) query = query.gte('created_at', `${tglMulai}T00:00:00`);
+        if (tglSelesai) query = query.lte('created_at', `${tglSelesai}T23:59:59`);
+
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data: transactions, error } = await query;
 
         if (error) throw error;
 
         const laporanTable = document.getElementById('laporanTable');
-        laporanTable.innerHTML = '';
         
-        // Simpan data ke cache global untuk export Excel
-        globalLaporanCache = transactions; 
+        if (!append) {
+            globalLaporanCache = transactions; 
+        } else {
+            globalLaporanCache = [...globalLaporanCache, ...transactions];
+        }
 
-        // [FIX KRITIS BARU] Buat map nama produk dari cache stok untuk fallback data lama
         const prodMap = globalProdukCache.reduce((m,p)=> (m[p.id]=p.nama, m), {});
 
+        if (transactions.length === 0 && !append) {
+            laporanTable.innerHTML = '<tr><td colspan="10" class="text-center p-4 italic text-slate-500">Tidak ada data transaksi pada periode ini.</td></tr>';
+        }
+
+        // --- PERBAIKAN LOGIKA IZIN ---
+        let izinHapus = false;
+        if (typeof userPermissions !== 'undefined') {
+             // 1. Cek Admin Utama
+             const isMainAdmin = (currentUserId === MAIN_ADMIN_ID) || (userPermissions.role === 'admin');
+             // 2. Cek Checkbox Profil (can_manage_laporan)
+             const hasPermission = userPermissions.can_manage_laporan;
+
+             if (isMainAdmin || hasPermission) {
+                 izinHapus = true;
+             }
+        }
+
         transactions.forEach(item => {
-            
-            // --- DATA EXTRACTION & SAFETY CHECK ---
-            const modalValue = parseFloat(item.modal_history) || 0; 
-            const hargaJualValue = parseFloat(item.harga_jual_history) || 0;
-            const diskonValue = parseFloat(item.diskon_persen) || 0;
-            
-            const qtyValue = item.qty || 1;
-            const totalValue = item.total || 0;
-            const labaValue = item.keuntungan || 0; 
-            const laba = parseFloat(labaValue);
-            
-            // --- LOGIKA TAMPILAN PRODUK ---
-            // 1. Prioritas: Ambil dari nama snapshot (Data Baru/Terkini)
             let productName = item.nama_produk;
-            
-            // 2. Fallback: Jika nama snapshot kosong, cari di cache produk menggunakan ID (Data Lama)
             if (!productName && item.produk_id) {
                 productName = prodMap[item.produk_id];
             }
-            
-            // 3. Final: Gunakan nama yang ditemukan, atau ID jika tetap tidak ada
             const finalProductName = productName || `[ID: ${item.produk_id || '???'}]`;
             
-            const productVarian = item.varian ? ` (${item.varian})` : '';
+            const modalValue = parseFloat(item.modal_history) || 0; 
+            const hargaJualValue = parseFloat(item.harga_jual_history) || 0;
+            const diskonValue = parseFloat(item.diskon_persen) || 0;
+            const laba = parseFloat(item.keuntungan || 0);
+
+            let actionHtml;
+            if (izinHapus) {
+                actionHtml = `
+                    <button onclick="deleteTransaksi('${item.id}', ${item.produk_id}, ${item.qty})"
+                            class="bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 transition text-xs font-bold"
+                            title="Hapus Transaksi">
+                        Hapus
+                    </button>
+                `;
+            } else {
+                actionHtml = `
+                    <button disabled
+                            class="bg-slate-200 text-slate-400 px-3 py-1 rounded cursor-not-allowed text-xs font-bold"
+                            title="Butuh Izin Hapus Laporan">
+                        Hapus
+                    </button>
+                `;
+            }
 
             const row = document.createElement('tr');
-            
-            const transaksiIdSafe = item.id || '0';
-            const produkIdSafe = item.produk_id || 0;
-            
             row.innerHTML = `
-                <td class="p-3">${formatDate(item.created_at)}</td>
-                <td class="p-3">${finalProductName}${productVarian}</td> <td class="p-3">${item.nama_pembeli || 'Umum'}</td>
-                
-                <td class="p-3">${formatCurrency(modalValue)}</td>
-                <td class="p-3">${formatCurrency(hargaJualValue)}</td>
-                
+                <td class="p-3 text-xs whitespace-nowrap">${formatDate(item.created_at)}</td>
+                <td class="p-3 font-medium">${escapeHtml(finalProductName)}</td>
+                <td class="p-3">${escapeHtml(item.nama_pembeli || 'Umum')}</td>
+                <td class="p-3 text-right">${formatCurrency(modalValue)}</td>
+                <td class="p-3 text-right">${formatCurrency(hargaJualValue)}</td>
                 <td class="p-3 text-center">${diskonValue}%</td>
-                <td class="p-3 text-center">${qtyValue}</td>
-                
-                <td class="p-3">${formatCurrency(totalValue)}</td> 
-                <td class="p-3 font-semibold text-green-600 dark:text-green-400">
+                <td class="p-3 text-center">${item.qty}</td>
+                <td class="p-3 text-right font-bold">${formatCurrency(item.total)}</td> 
+                <td class="p-3 text-right font-semibold text-green-600 dark:text-green-400">
                     ${formatCurrency(laba)} 
                 </td>
-                
-                <td class="p-3 flex gap-2">
-                    <button onclick="deleteTransaksi('${transaksiIdSafe}', ${produkIdSafe}, ${qtyValue})"
-                            class="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-red-700 transition-all shadow-sm"
-                            title="Hapus Transaksi">
-                        <i class="fa-solid fa-trash"></i> Hapus
-                    </button>
-                </td>
+                <td class="p-3 text-center">${actionHtml}</td>
             `;
             laporanTable.appendChild(row);
         });
 
+        updateLoadMoreButton(transactions.length === laporanPerPage);
+
     } catch (error) {
+        console.error(error);
         Swal.fire('Error', `Gagal memuat laporan: ${error.message}`, 'error');
     } finally {
         hideLoading();
     }
 }
 
+function updateLoadMoreButton(show) {
+    let btn = document.getElementById('btnLoadMore');
+    
+    // 1. Cari elemen pembungkus tabel (yang ada scroll-nya)
+    const tbody = document.getElementById('laporanTable');
+    const table = tbody.closest('table');
+    const scrollContainer = tbody.closest('.overflow-x-auto');
+    const mainCard = scrollContainer ? scrollContainer.parentNode : table.parentNode;
+
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'btnLoadMore';
+        
+        // 2. Styling agar Full Width (w-full) dan nyaman ditekan di HP (py-3)
+        btn.className = "w-full block py-3 mt-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all cursor-pointer";
+        
+        btn.innerHTML = '<i class="fa-solid fa-circle-chevron-down mr-2"></i> Muat Lebih Banyak Data';
+        
+        btn.onclick = () => { 
+            laporanPage++; 
+            loadLaporan(true); 
+        };
+        if (scrollContainer) {
+            scrollContainer.insertAdjacentElement('afterend', btn);
+        } else {
+            mainCard.appendChild(btn);
+        }
+    }
+    
+    // Tampilkan atau sembunyikan sesuai kondisi
+    if (show) {
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
 // Ganti seluruh fungsi deleteTransaksi() Anda di script.js:
 
 async function deleteTransaksi(transaksiId, produkId, qty) {
@@ -2045,7 +2130,7 @@ async function prosesSimpanPO() {
 
 // --- C. LOGIKA DAFTAR PO & PELUNASAN ---
 
-// Ganti seluruh fungsi loadPreorders() Anda:
+// Ganti seluruh fungsi loadPreorders() Anda di script.js:
 
 async function loadPreorders() {
     const tBody = document.getElementById('poTableBody');
@@ -2068,6 +2153,22 @@ async function loadPreorders() {
         return;
     }
 
+    // --- PERBAIKAN LOGIKA IZIN (ROUTING YANG BENAR) ---
+    let izinHapus = false;
+    
+    if (typeof userPermissions !== 'undefined') {
+        // 1. Cek apakah dia Admin Utama (berdasarkan ID konstan atau Role)
+        const isMainAdmin = (currentUserId === MAIN_ADMIN_ID) || (userPermissions.role === 'admin');
+        
+        // 2. Cek apakah dia punya izin 'Hapus Laporan' (can_manage_laporan)
+        // JANGAN GUNAKAN 'can_delete_transactions', ITU SALAH.
+        const hasPermission = userPermissions.can_manage_laporan; 
+
+        if (isMainAdmin || hasPermission) {
+            izinHapus = true;
+        }
+    }
+
     tBody.innerHTML = data.map(po => {
         const items = po.items_json || [];
         const itemList = items.map(i => `• ${escapeHtml(i.nama)} (${i.qty}x)`).join('<br>');
@@ -2080,32 +2181,40 @@ async function loadPreorders() {
             ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">LUNAS</span>'
             : '<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">BELUM LUNAS</span>';
 
-        // Persiapan data untuk tombol aksi
         const jsonItems = JSON.stringify(items).replace(/"/g, '&quot;');
         const catatanSafe = (po.catatan || '').replace(/"/g, '&quot;');
         
-        let btnAksi;
-        
-        // [FIX UTAMA] Tombol Lunasi/Hapus muncul jika status BUKAN 'LUNAS'
+        let buttonsHtml = '';
+
         if (po.status !== 'LUNAS') {
-            btnAksi = `
-                <div class="flex flex-col gap-2">
-                    <button onclick='bukaModalPelunasan(${JSON.stringify(po)})' class="bg-green-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-green-600 transition">
-                       <i class="fa-solid fa-money-bill"></i> Lunasi
-                    </button>
-                    <button onclick="hapusPreorder('${po.id}', '${po.nota_id}', ${po.jumlah_dp})" class="bg-red-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-red-600 transition">
-                       <i class="fa-solid fa-trash"></i> Hapus
-                    </button>
-                </div>
+            buttonsHtml += `
+                <button onclick='bukaModalPelunasan(${JSON.stringify(po)})' class="w-full bg-green-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-green-600 transition mb-1">
+                   <i class="fa-solid fa-money-bill"></i> Lunasi
+                </button>
             `;
         } else {
-            // Sudah Lunas, hanya tampilkan struk
-            btnAksi = `
-                <button onclick='printStrukPO(${jsonItems}, "${po.nama_pembeli}", ${po.total_transaksi}, ${po.jumlah_dp}, 0, "${po.estimasi_selesai}", "${po.nota_id}", "LUNAS", "${catatanSafe}")' class="bg-sky-500 text-white px-3 py-1 rounded shadow text-xs hover:bg-sky-600 transition">
+            buttonsHtml += `
+                <button onclick='printStrukPO(${jsonItems}, "${po.nama_pembeli}", ${po.total_transaksi}, ${po.jumlah_dp}, 0, "${po.estimasi_selesai}", "${po.nota_id}", "LUNAS", "${catatanSafe}")' class="w-full bg-sky-500 text-white px-3 py-1 rounded shadow text-xs hover:bg-sky-600 transition mb-1">
                     <i class="fa-solid fa-print"></i> Struk
                 </button>
             `;
         }
+
+        if (izinHapus) {
+            buttonsHtml += `
+                <button onclick="hapusPreorder('${po.id}', '${po.nota_id}', ${po.jumlah_dp})" class="w-full bg-red-500 text-white px-3 py-1 rounded shadow text-xs font-bold hover:bg-red-600 transition">
+                   <i class="fa-solid fa-trash"></i> Hapus
+                </button>
+            `;
+        } else {
+            buttonsHtml += `
+                <button disabled class="w-full bg-slate-300 dark:bg-slate-700 text-slate-500 px-3 py-1 rounded cursor-not-allowed text-xs font-bold opacity-70" title="Butuh Izin Hapus Laporan">
+                   <i class="fa-solid fa-trash"></i> Hapus
+                </button>
+            `;
+        }
+
+        const btnAksi = `<div class="flex flex-col gap-1 min-w-[80px]">${buttonsHtml}</div>`;
 
         return `
             <tr class="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
@@ -2115,14 +2224,8 @@ async function loadPreorders() {
                     <div class="text-xs text-slate-400 mt-1">${formatTanggal(po.created_at)}</div>
                 </td>
                 <td class="p-4 text-xs text-slate-600 dark:text-slate-400 align-top leading-relaxed">${itemList}</td>
-                
-                <td class="p-4 align-top">
-                    ${catatanShow}
-                </td>
-
-                <td class="p-4 text-sm align-top">
-                    ${po.estimasi_selesai ? formatTanggal(po.estimasi_selesai).split(',')[0] : '-'}
-                </td>
+                <td class="p-4 align-top">${catatanShow}</td>
+                <td class="p-4 text-sm align-top">${po.estimasi_selesai ? formatTanggal(po.estimasi_selesai).split(',')[0] : '-'}</td>
                 <td class="p-4 text-right align-top">
                     <div class="font-bold text-slate-700 dark:text-slate-300">Total: ${formatRupiah(po.total_transaksi)}</div>
                     <div class="text-xs text-purple-600">DP: ${formatRupiah(po.jumlah_dp)}</div>
@@ -2311,4 +2414,3 @@ async function prosesLunasiAkhir() {
         hideLoading();
     }
 }
-
