@@ -986,13 +986,19 @@ function renderProdukDropdown(list) {
     const dropdownEl = document.getElementById('kasirProdukDropdown');
     
     if (list.length === 0) {
-        dropdownEl.innerHTML = `<div class="px-4 py-2 text-sm">Produk tidak ditemukan.</div>`;
+        dropdownEl.innerHTML = `<div class="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">Produk tidak ditemukan.</div>`;
         dropdownEl.classList.remove('hidden');
         return;
     }
     const html = list.map(p => {
         const isHabis = p.stok === 0;
-        const style = isHabis ? 'bg-gray-200 opacity-60 cursor-not-allowed' : 'hover:bg-blue-100 cursor-pointer';
+
+        // PERUBAHAN DI SINI:
+        // Light Mode: hover:bg-blue-100
+        // Dark Mode: dark:hover:bg-blue-600 dark:hover:text-white
+        const style = isHabis 
+            ? 'bg-gray-200 dark:bg-slate-700 opacity-60 cursor-not-allowed' 
+            : 'hover:bg-blue-100 dark:hover:bg-blue-600 dark:hover:text-white cursor-pointer transition-colors';
         
         const diskon = p.diskon_persen || 0;
         let hargaTampil = formatRupiah(p.harga_jual);
@@ -1001,15 +1007,15 @@ function renderProdukDropdown(list) {
             const hargaDiskon = p.harga_jual - (p.harga_jual * diskon / 100);
             hargaTampil = `<span class="line-through text-xs text-red-400 mr-1">${formatRupiah(p.harga_jual)}</span> 
                            <span class="font-bold">${formatRupiah(hargaDiskon)}</span> 
-                           <span class="text-[10px] bg-red-100 text-red-600 px-1 rounded">-${diskon}%</span>`;
+                           <span class="text-[10px] bg-red-100 text-red-600 px-1 rounded ml-1">-${diskon}%</span>`;
         }
 
         const click = isHabis ? '' : `onmousedown="selectProduk(${p.id}, '${escapeHtml(p.nama)}', ${p.harga_jual}, ${diskon})"`;
         
         return `
-            <div class="px-4 py-2 ${style}" ${click}>
+            <div class="px-4 py-2 border-b border-slate-100 dark:border-slate-700 ${style}" ${click}>
                 <p class="font-medium">${escapeHtml(p.nama)} ${isHabis ? '(Habis)' : ''}</p>
-                <p class="text-sm text-green-600">Stok: ${p.stok} | ${hargaTampil}</p>
+                <p class="text-sm text-green-600 dark:text-green-400">Stok: ${p.stok} | ${hargaTampil}</p>
             </div>`;
     }).join('');
     dropdownEl.innerHTML = html;
@@ -2247,9 +2253,9 @@ async function loadPreorders() {
 async function hapusPreorder(poId, notaId, dpJumlah) {
     if (dpJumlah > 0) {
         const confirm = await Swal.fire({
-            title: 'Hapus PO Belum Lunas?',
-            html: `Yakin ingin menghapus PO **${notaId}**?<br>
-                   Transaksi DP sebesar **${formatCurrency(dpJumlah)}** (jika ada) di Laporan juga akan dihapus.`,
+            title: 'Hapus Transaksi PO?',
+            html: `Yakin ingin menghapus ${notaId} ?<br>
+                   Transaksi DP sebesar ${formatCurrency(dpJumlah)} (jika ada) di Laporan juga akan dihapus.`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Ya, Hapus',
