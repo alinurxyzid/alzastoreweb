@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // -----------------------------------------------------------
     // 1. CEK SESI LOGIN
     // -----------------------------------------------------------
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (!session) {
       window.location.href = 'login.html'; 
       return;
@@ -289,7 +289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 2. AMBIL DATA PROFIL (PENTING: JANGAN DIHAPUS)
     // -----------------------------------------------------------
     // Inilah bagian yang sebelumnya hilang sehingga menyebabkan error "profile is not defined"
-    const { data: profile, error } = await supabase
+    const { data: profile, error } = await supabaseClient
       .from('profiles')
       .select('role, nama, can_manage_stok, can_manage_laporan, can_see_finances') 
       .eq('id', session.user.id)
@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Validasi jika profil gagal diambil atau error koneksi
     if (error || !profile) {
       Swal.fire('Gagal', 'Gagal memverifikasi status profil Anda. Silakan login kembali.', 'error').then(() => {
-          supabase.auth.signOut().then(() => window.location.href = 'login.html');
+          supabaseClient.auth.signOut().then(() => window.location.href = 'login.html');
       });
       return;
     }
@@ -306,7 +306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cek apakah akun statusnya pending
     if (profile.role !== 'approved' && profile.role !== 'admin') {
       Swal.fire('Pending', 'Akun Anda masih menunggu persetujuan Admin.', 'warning').then(() => {
-          supabase.auth.signOut().then(() => window.location.href = 'login.html');
+          supabaseClient.auth.signOut().then(() => window.location.href = 'login.html');
       });
       return;
     }
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               confirmButtonColor: '#2563eb',
               allowOutsideClick: false
           });
-          await supabase.auth.signOut();
+          await supabaseClient.auth.signOut();
           window.location.href = 'login.html';
     }
 
@@ -505,7 +505,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const modal = document.getElementById('logoutConfirmModal');
         if(modal) modal.classList.add('hidden');
         showLoading('Anda sedang logout...');
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabaseClient.auth.signOut();
         if (error) { alert('Gagal logout: ' + error.message); hideLoading(); } 
         else { window.location.href = 'login.html'; }
     });
@@ -557,10 +557,10 @@ function applyUiPermissions() {
 
 async function loadDashboard() {
     try {
-        const { data: produk, error: prodErr } = await supabase.from('produk').select('id');
+        const { data: produk, error: prodErr } = await supabaseClient.from('produk').select('id');
         if (prodErr) throw prodErr;
 
-        const { data: transaksi, error: transErr } = await supabase.from('transaksi').select('total, keuntungan, created_at, produk_id, qty');
+        const { data: transaksi, error: transErr } = await supabaseClient.from('transaksi').select('total, keuntungan, created_at, produk_id, qty');
         if (transErr) throw transErr;
         
         const totalProduk = produk ? produk.length : 0;
@@ -676,7 +676,7 @@ async function loadAdminUsers() {
 
     showLoading('Memuat daftar user...');
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('profiles')
             .select('id, email, role, nama, can_manage_stok, can_manage_laporan, can_see_finances')
             .order('email', { ascending: true });
@@ -750,7 +750,7 @@ window.approveUser = async function(userId) {
 
     showLoading('Menyetujui...');
     try {
-        const { error } = await supabase.from('profiles').update({ role: 'approved' }).eq('id', userId);
+        const { error } = await supabaseClient.from('profiles').update({ role: 'approved' }).eq('id', userId);
         if (error) throw error;
         
         Toast.fire({ icon: 'success', title: 'User berhasil disetujui' });
@@ -774,7 +774,7 @@ window.updateUserProfile = async function(profileId) {
         if (laporanEl && !laporanEl.disabled) dataToUpdate.can_manage_laporan = laporanEl.checked;
         if (financeEl && !financeEl.disabled) dataToUpdate.can_see_finances = financeEl.checked;
 
-        const { error } = await supabase.from('profiles').update(dataToUpdate).eq('id', profileId);
+        const { error } = await supabaseClient.from('profiles').update(dataToUpdate).eq('id', profileId);
         if (error) throw error;
         
         Toast.fire({ icon: 'success', title: 'Profil diperbarui!' });
@@ -798,7 +798,7 @@ window.deleteUser = async function(userId, email) {
 
     showLoading('Menghapus...');
     try {
-        const { error } = await supabase.rpc('delete_user_by_id', { user_id_to_delete: userId });
+        const { error } = await supabaseClient.rpc('delete_user_by_id', { user_id_to_delete: userId });
         if (error) throw error;
         
         Swal.fire('Terhapus!', 'User telah dihapus.', 'success');
@@ -810,7 +810,7 @@ window.deleteUser = async function(userId, email) {
 
 async function loadStok() {
     try {
-        const { data, error } = await supabase.from('produk').select('*').order('id', { ascending: false });
+        const { data, error } = await supabaseClient.from('produk').select('*').order('id', { ascending: false });
         if (error) throw error;
         globalProdukCache = data || [];
         
@@ -881,7 +881,7 @@ async function handleStokSubmit(ev) {
     showLoading('Menyimpan...');
     try {
         if (id) {
-            const { error } = await supabase.from('produk')
+            const { error } = await supabaseClient.from('produk')
                 .update({ nama, modal, harga_jual, stok, diskon_persen }) 
                 .eq('id', id);
             if (error) throw error;
@@ -894,7 +894,7 @@ async function handleStokSubmit(ev) {
             } else {
                 productsToInsert.push({ nama, modal, harga_jual, stok, diskon_persen });
             }
-            const { error } = await supabase.from('produk').insert(productsToInsert);
+            const { error } = await supabaseClient.from('produk').insert(productsToInsert);
             if (error) throw error;
         }
         
@@ -960,7 +960,7 @@ window.hapusProduk = async function(id) {
 
     showLoading('Menghapus...');
     try {
-        const { error } = await supabase.from('produk').delete().eq('id', id);
+        const { error } = await supabaseClient.from('produk').delete().eq('id', id);
         if (error) throw error;
         await refreshAllData();
         Toast.fire({ icon: 'success', title: 'Produk dihapus' });
@@ -1058,7 +1058,7 @@ function hideProdukDropdown() {
 // --- Update Load History agar Struk Lama Aman ---
 async function loadKasirHistory() {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('transaksi')
             .select('id, produk_id, qty, total, created_at, keuntungan, nota_id, nama_pembeli, diskon_persen, harga_jual_history, produk:produk_id(nama, harga_jual)')
             .order('created_at', { ascending: false })
@@ -1317,7 +1317,7 @@ async function handleProsesKeranjang() {
     
     try {
         const ids = keranjang.map(i => i.produk_id);
-        const { data: latest } = await supabase.from('produk').select('id, nama, stok, harga_jual, modal, diskon_persen').in('id', ids);
+        const { data: latest } = await supabaseClient.from('produk').select('id, nama, stok, harga_jual, modal, diskon_persen').in('id', ids);
         
         let errMsg = '';
         const items = [];
@@ -1364,7 +1364,7 @@ async function handleProsesKeranjang() {
              const untung = (Number(i.harga_jual_final) - Number(i.modal)) * Number(i.qty);
              
              return Promise.all([
-                 supabase.from('transaksi').insert({ 
+                 supabaseClient.from('transaksi').insert({ 
                      produk_id: i.produk_id, 
                      qty: i.qty, 
                      total: total, 
@@ -1378,7 +1378,7 @@ async function handleProsesKeranjang() {
                      harga_jual_history: i.harga_asli // Harga sebelum diskon
                  }),
                  
-                 supabase.from('produk').update({ stok: i.stok_baru }).eq('id', i.produk_id)
+                 supabaseClient.from('produk').update({ stok: i.stok_baru }).eq('id', i.produk_id)
              ]);
         });
         
@@ -1431,7 +1431,7 @@ async function loadLaporan(append = false) {
     const to = from + laporanPerPage - 1;
 
     try {
-        let query = supabase.from('transaksi').select('*');
+        let query = supabaseClient.from('transaksi').select('*');
 
         if (tglMulai) query = query.gte('created_at', `${tglMulai}T00:00:00`);
         if (tglSelesai) query = query.lte('created_at', `${tglSelesai}T23:59:59`);
@@ -1587,7 +1587,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
 
     try {
         // --- STEP 2: Ambil Detail Transaksi untuk Identifikasi Tipe dan Nota ---
-        const { data: detailTrans, error: detailErr } = await supabase
+        const { data: detailTrans, error: detailErr } = await supabaseClient
             .from('transaksi')
             // Penting: Ambil nota_id untuk mencari PO jika ini transaksi Pelunasan
             .select('nama_pembeli, produk_id, qty, nota_id') 
@@ -1608,7 +1608,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
         const shouldRestoreStock = !isDpTransaction; 
         
         // 3. Hapus Transaksi Utama
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await supabaseClient
             .from('transaksi')
             .delete()
             .eq('id', transaksiId);
@@ -1628,7 +1628,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
                 }
 
                 // Ambil detail PO dari tabel preorder
-                const { data: poDetail, error: poErr } = await supabase
+                const { data: poDetail, error: poErr } = await supabaseClient
                     .from('preorder')
                     .select('items_json')
                     .eq('nota_id', detailTrans.nota_id)
@@ -1648,7 +1648,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
                     const currentQty = item.qty;
 
                     // Fetch current stock
-                    const { data: produk, error: fetchError } = await supabase
+                    const { data: produk, error: fetchError } = await supabaseClient
                         .from('produk')
                         .select('stok')
                         .eq('id', currentProductId)
@@ -1656,7 +1656,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
 
                     if (!fetchError && produk) {
                         const newStock = produk.stok + currentQty;
-                        const { error: updateError } = await supabase
+                        const { error: updateError } = await supabaseClient
                             .from('produk')
                             .update({ stok: newStock })
                             .eq('id', currentProductId);
@@ -1681,7 +1681,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
                 const restoreProdukId = detailTrans.produk_id;
                 const restoreQty = detailTrans.qty; 
                 
-                const { data: produk, error: fetchError } = await supabase
+                const { data: produk, error: fetchError } = await supabaseClient
                     .from('produk')
                     .select('stok')
                     .eq('id', restoreProdukId)
@@ -1691,7 +1691,7 @@ async function deleteTransaksi(transaksiId, produkId, qty) {
                     console.warn(`Produk ID ${restoreProdukId} tidak ditemukan di tabel produk. Hanya menghapus transaksi.`);
                 } else {
                     const newStock = produk.stok + restoreQty;
-                    const { error: updateError } = await supabase
+                    const { error: updateError } = await supabaseClient
                         .from('produk')
                         .update({ stok: newStock })
                         .eq('id', restoreProdukId);
@@ -1745,7 +1745,7 @@ async function viewReceipt(transaksiId, tipe) {
         // --- LOGIKA FETCH DATA STRUK ---
         
         // Contoh: Mengambil data transaksi berdasarkan ID
-        const { data: receiptData, error } = await supabase
+        const { data: receiptData, error } = await supabaseClient
             .from('transaksi')
             .select('*')
             .eq('id', transaksiId)
@@ -1790,7 +1790,7 @@ window.hapusLaporan = async function(id) {
 
     showLoading('Menghapus...');
     try {
-        const { error } = await supabase.from('transaksi').delete().eq('id', id);
+        const { error } = await supabaseClient.from('transaksi').delete().eq('id', id);
         if(error) throw error;
         await refreshAllData();
         Toast.fire({ icon: 'success', title: 'Transaksi dihapus' });
@@ -2072,7 +2072,7 @@ async function prosesSimpanPO() {
 
         // A. Kurangi Stok Produk (Menggunakan RPC Database)
         const updateStokPromises = keranjang.map(item => {
-             return supabase.rpc('kurangi_stok', { 
+             return supabaseClient.rpc('kurangi_stok', { 
                  p_id: item.produk_id, 
                  p_qty: item.qty 
              });
@@ -2080,7 +2080,7 @@ async function prosesSimpanPO() {
         await Promise.all(updateStokPromises);
 
         // B. Simpan ke Tabel PREORDER
-        const { error: errPO } = await supabase.from('preorder').insert({
+        const { error: errPO } = await supabaseClient.from('preorder').insert({
             nota_id: notaId,
             nama_pembeli: nama,
             items_json: keranjang,
@@ -2099,7 +2099,7 @@ async function prosesSimpanPO() {
         if (dp > 0) {
             const refProdukId = keranjang[0].produk_id; 
             
-            await supabase.from('transaksi').insert({
+            await supabaseClient.from('transaksi').insert({
                 produk_id: refProdukId, 
                 qty: 1,
                 total: dp, // Hanya DP yang masuk total hari ini
@@ -2144,7 +2144,7 @@ async function loadPreorders() {
 
     tBody.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading...</td></tr>';
     
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('preorder')
         .select('*')
         .order('created_at', { ascending: false });
@@ -2281,7 +2281,7 @@ async function hapusPreorder(poId, notaId, dpJumlah) {
     try {
         // A. Hapus Transaksi DP yang masuk ke Laporan (Tabel Transaksi)
         // Dihapus berdasarkan nota_id yang sama.
-        const { error: transError } = await supabase
+        const { error: transError } = await supabaseClient
             .from('transaksi')
             .delete()
             .eq('nota_id', notaId);
@@ -2292,7 +2292,7 @@ async function hapusPreorder(poId, notaId, dpJumlah) {
         }
 
         // B. Hapus Record Master PO (Tabel Preorder)
-        const { error: poError } = await supabase
+        const { error: poError } = await supabaseClient
             .from('preorder')
             .delete()
             .eq('id', poId);
@@ -2329,7 +2329,7 @@ async function updateEstimasiOnly() {
     const tglBaru = document.getElementById('editEstimasi').value;
     
     showLoading('Update Tanggal...');
-    const { error } = await supabase.from('preorder')
+    const { error } = await supabaseClient.from('preorder')
         .update({ estimasi_selesai: tglBaru })
         .eq('id', activePO.id);
         
@@ -2368,7 +2368,7 @@ async function prosesLunasiAkhir() {
     
     try {
         // A. Update Status PO jadi LUNAS
-        const { error: errPO } = await supabase.from('preorder')
+        const { error: errPO } = await supabaseClient.from('preorder')
             .update({ 
                 status: 'LUNAS',
                 sisa_tagihan: 0,
@@ -2384,7 +2384,7 @@ async function prosesLunasiAkhir() {
                 ? activePO.items_json[0].produk_id 
                 : null;
             
-            await supabase.from('transaksi').insert({
+            await supabaseClient.from('transaksi').insert({
                 produk_id: refProdukId, 
                 qty: 1,
                 // Total uang yang masuk hari ini (sisa tagihan)
@@ -2420,4 +2420,3 @@ async function prosesLunasiAkhir() {
         hideLoading();
     }
 }
-
