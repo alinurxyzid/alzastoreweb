@@ -11,15 +11,16 @@ tailwind.config = {
 }
 
 // ---------- KONFIGURASI SUPABASE ----------
-// GANTI DENGAN KUNCI ANDA
 const SUPABASE_URL = 'https://pmxkyzgsauzxeidbjuhd.supabase.co'; 
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBteGt5emdzYXV6eGVpZGJqdWhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExMjMwNDAsImV4cCI6MjA3NjY5OTA0MH0.oXlVN7F-CXN6zDCuOOr8u2N6efIo9GWd9JyJ5O0_fyA'; 
 
-let supabase;
+let supabaseClient;
+
+// Inisialisasi client
 if (window.supabase) {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 } else {
-  console.error("Supabase JS Library belum dimuat.");
+    console.error("Supabase JS Library belum dimuat.");
 }
 
 // ---------- LOGIKA UMUM (Dark Mode & Init) ----------
@@ -59,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const passwordInput = document.getElementById('password'); 
     const togglePassword = document.getElementById('toggle-password');
 
-    // Toggle Password Visibility
     if(togglePassword) {
       togglePassword.addEventListener('click', () => {
         const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
@@ -82,21 +82,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const email = document.getElementById('email').value.trim();
       const password = passwordInput.value; 
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // PERBAIKAN: Menggunakan supabaseClient
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
         email: email, password: password,
       });
 
       if (error) {
-        alertMessage.textContent = 'Login Gagal: Email atau password salah.';
+        alertMessage.textContent = 'Login Gagal: ' + error.message;
         alertMessage.classList.remove('hidden');
         loginButton.disabled = false;
         loginText.classList.remove('hidden');
         loginSpinner.classList.add('hidden');
       } else {
-        loginText.textContent = 'Login Berhasil!';
-        loginText.classList.remove('hidden');
-        loginSpinner.classList.add('hidden');
-        window.location.href = 'index.html'; // Redirect ke dashboard
+        window.location.href = 'index.html'; 
       }
     });
   }
@@ -145,45 +143,32 @@ document.addEventListener('DOMContentLoaded', () => {
           registerSpinner.classList.add('hidden');
       };
       
-      if (!email) {
-        alertMessage.textContent = 'Daftar Gagal: Email harus diisi.';
-        alertMessage.classList.remove('hidden');
-        restoreButton(); return;
-      }
-
       if (password !== confirmPassword) {
-        alertMessage.textContent = 'Daftar Gagal: Password dan konfirmasi password tidak cocok.';
+        alertMessage.textContent = 'Daftar Gagal: Password tidak cocok.';
         alertMessage.classList.remove('hidden');
         restoreButton(); return;
       }
       
-      const { data, error } = await supabase.auth.signUp({
+      // PERBAIKAN: Menggunakan supabaseClient
+      const { data, error } = await supabaseClient.auth.signUp({
         email: email, password: password
       });
 
       if (error) {
-        if (error.message.includes('User already registered')) {
-            alertMessage.textContent = 'Daftar Gagal: Email ini sudah terdaftar.';
-        } else if (error.message.includes('Password should be at least 6 characters')) {
-            alertMessage.textContent = 'Daftar Gagal: Password minimal harus 6 karakter.';
-        } else {
-            alertMessage.textContent = 'Daftar Gagal: ' + error.message;
-        }
+        alertMessage.textContent = 'Daftar Gagal: ' + error.message;
         alertMessage.classList.remove('hidden');
         restoreButton(); 
       } else {
-        registerText.classList.remove('hidden');
-        registerSpinner.classList.add('hidden');
-        successMessage.textContent = 'Daftar berhasil! Akun Anda sedang ditinjau oleh Admin dan akan segera diaktifkan.';
+        successMessage.textContent = 'Daftar berhasil! Silakan cek email atau hubungi admin.';
         successMessage.classList.remove('hidden');
         registerForm.reset();
+        restoreButton();
       }
     });
   }
 
-// ---------- LOGIKA HALAMAN VERIF EMAIL (LUPA PASSWORD) ----------
+  // ---------- LOGIKA RESET PASSWORD ----------
   const verifForm = document.getElementById('verif-form');
-  
   if (verifForm) {
     const submitBtn = document.getElementById('submit-button');
     const btnText = document.getElementById('btn-text');
@@ -192,43 +177,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     verifForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
-      // 1. Mulai Loading
       submitBtn.disabled = true;
       btnText.classList.add('hidden');
       btnSpinner.classList.remove('hidden');
-      alertMessage.classList.add('hidden');
-
+      
       try {
-        // 2. Ambil Elemen Input (Pencegahan Error jika elemen tidak ada)
         const emailInput = document.getElementById('reset-email');
-        
-        if (!emailInput) {
-            throw new Error("Elemen input dengan ID 'reset-email' tidak ditemukan di HTML.");
-        }
-
         const email = emailInput.value.trim();
 
-        // 3. Kirim Request ke Supabase
-        const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: 'https://alzastore.pages.dev/reset-password.html',
+        // PERBAIKAN: Menggunakan supabaseClient
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin + '/reset-password.html',
         });
 
         if (error) throw error;
 
-        // 4. Jika Sukses
-        alertMessage.className = 'p-3 rounded-lg text-sm border bg-green-100 border-green-400 text-green-700 dark:bg-green-900/30 dark:border-green-600 dark:text-green-300 animate-fade-in';
-        alertMessage.innerHTML = `<i class="fa-solid fa-check-circle mr-2"></i> Link reset dikirim ke <b>${email}</b><br>Harap periksa inbox/spam`;
+        alertMessage.className = 'p-3 rounded-lg text-sm border bg-green-100 border-green-400 text-green-700';
+        alertMessage.innerHTML = `Link reset dikirim ke <b>${email}</b>`;
         alertMessage.classList.remove('hidden');
-        
-        emailInput.value = ''; 
-
       } catch (error) {
-        console.error("Verif Email Error:", error);
-        alertMessage.className = 'p-3 rounded-lg text-sm border bg-red-100 border-red-400 text-red-700 dark:bg-red-900/30 dark:border-red-600 dark:text-red-300 animate-fade-in';
-        alertMessage.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i> ${error.message || 'Terjadi kesalahan.'}`;
+        alertMessage.className = 'p-3 rounded-lg text-sm border bg-red-100 border-red-400 text-red-700';
+        alertMessage.textContent = error.message;
         alertMessage.classList.remove('hidden');
-      
       } finally {
         submitBtn.disabled = false;
         btnText.classList.remove('hidden');
@@ -236,4 +206,4 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-}); 
+});
